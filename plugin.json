@@ -1,0 +1,12 @@
+{
+  "main": "index.html",
+  "preload": "preload.js",
+  "logo": "assets/holiday-planner-logo.png",
+  "features": [
+    {
+      "code": "holiday-planner",
+      "explain": "计算大小休和法定假期",
+      "cmds": ["假期安排", "大小休", "法定假期"]
+    }
+  ]
+}

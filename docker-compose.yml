@@ -1,0 +1,70 @@
+name: calendar-planner
+
+x-workspace: &workspace
+  build:
+    context: .
+  working_dir: /workspace
+
+services:
+  dev:
+    <<: *workspace
+    init: true
+    command: npm run dev:web -- --host 0.0.0.0
+    ports:
+      - "1420:1420"
+    volumes:
+      - .:/workspace
+      - dev-node-modules:/workspace/node_modules
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target:/workspace/src-tauri/target
+    image: object-calendar-planner:dev
+
+  check:
+    <<: *workspace
+    profiles: ["tools"]
+    command: npm run check
+    volumes:
+      - .:/workspace
+      - check-node-modules:/workspace/node_modules
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target:/workspace/src-tauri/target
+    image: object-calendar-planner:check
+
+  test:
+    <<: *workspace
+    profiles: ["tools"]
+    command: npm test
+    volumes:
+      - .:/workspace
+      - test-node-modules:/workspace/node_modules
+    image: object-calendar-planner:test
+
+  build:
+    <<: *workspace
+    profiles: ["tools"]
+    command: sh -c "npm run build:web && npm run build:offline && npm run verify:build"
+    volumes:
+      - .:/workspace
+      - check-node-modules:/workspace/node_modules
+    image: object-calendar-planner:check
+
+  native-test:
+    <<: *workspace
+    profiles: ["tools"]
+    command: npm run test:native
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target:/workspace/src-tauri/target
+    image: object-calendar-planner:check
+
+volumes:
+  dev-node-modules:
+  check-node-modules:
+  test-node-modules:
+  cargo-registry:
+  cargo-git:
+  cargo-target:

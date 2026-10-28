@@ -1,0 +1,489 @@
+html.platform-desktop,
+.platform-desktop body {
+  background: transparent;
+}
+
+html.platform-desktop,
+.platform-desktop * {
+  scrollbar-width: none;
+}
+
+html.platform-desktop::-webkit-scrollbar,
+.platform-desktop *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.platform-desktop body {
+  min-width: 0;
+  font-size: calc(12px + var(--desktop-font-offset, 0px));
+  filter: brightness(var(--desktop-brightness, 1));
+}
+
+.platform-desktop .app-shell {
+  width: 100%;
+  min-width: 0;
+  gap: calc(8 * var(--layout-space));
+  padding: calc(8 * var(--layout-space));
+  background: color-mix(in srgb, var(--page) calc(var(--desktop-opacity, .7) * 100%), transparent);
+  border-radius: 16px;
+}
+
+.platform-desktop.settings-open .app-shell {
+  gap: calc(8 * var(--layout-space));
+  padding: calc(8 * var(--layout-space)) 0 0;
+}
+
+.platform-desktop.settings-open .app-shell > .desktop-titlebar {
+  flex-shrink: 0;
+  padding: 0 calc(8 * var(--layout-space));
+}
+
+.desktop-titlebar,
+.desktop-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--layout-space));
+  justify-content: space-between;
+}
+
+.desktop-titlebar {
+  min-height: 28px;
+  color: var(--text);
+}
+
+.desktop-drag {
+  flex: 1;
+  align-self: stretch;
+  padding: calc(4 * var(--layout-space)) calc(8 * var(--layout-space));
+  user-select: none;
+}
+
+.desktop-titlebar button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+}
+
+.desktop-titlebar .desktop-sidebar-toggle {
+  display: grid;
+  place-items: center;
+}
+
+.desktop-sidebar-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.desktop-titlebar .desktop-sidebar-toggle:hover { background: var(--hover); }
+
+.desktop-titlebar .desktop-sidebar-toggle[aria-expanded="true"] {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.desktop-titlebar button:focus-visible,
+.attachment-drag:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.platform-desktop .summary-band {
+  margin: 0;
+}
+
+.platform-desktop .workspace {
+  flex: none;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.platform-desktop .calendar-panel {
+  min-width: 0;
+  padding: calc(8 * var(--layout-space));
+  overflow: visible;
+}
+
+.platform-desktop .calendar-toolbar {
+  min-height: 36px;
+  padding: 0 calc(8 * var(--layout-space));
+}
+
+.platform-desktop .calendar-board {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: calc(8 * var(--layout-space));
+}
+
+.platform-desktop .calendar-stage {
+  grid-template-columns: 34px minmax(0, 1fr) 72px;
+  gap: calc(8 * var(--layout-space));
+}
+
+.platform-desktop .month-nav {
+  grid-column: 2;
+  grid-row: 1;
+  writing-mode: horizontal-tb;
+  margin: 0;
+}
+
+.platform-desktop .calendar-side-actions {
+  position: static;
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  gap: calc(4 * var(--layout-space));
+  transform: none;
+}
+
+.platform-desktop .calendar-stage > .calendar-side-button {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.platform-desktop .calendar-side-button,
+.platform-desktop .calendar-today-button {
+  width: 30px;
+  height: 30px;
+}
+
+.platform-desktop .calendar-grid,
+.platform-desktop .weekday-header {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  column-gap: calc(8 * var(--layout-space));
+}
+
+.platform-desktop .calendar-grid {
+  row-gap: calc(8 * var(--layout-space));
+}
+
+.platform-desktop .weekday-header {
+  margin-bottom: calc(10 * var(--layout-space));
+}
+
+.platform-desktop .day-cell {
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: calc(4 * var(--layout-space));
+  border-radius: 10px;
+}
+
+.platform-desktop .day-number {
+  font-size: calc(18px + var(--desktop-font-offset, 0px));
+}
+
+.platform-desktop .calendar-panel,
+.platform-desktop .settings-group,
+.platform-desktop .desktop-footer {
+  background: color-mix(in srgb, var(--surface) calc(var(--desktop-opacity, .7) * 100%), transparent);
+}
+
+.desktop-footer {
+  grid-column: 1;
+  padding: calc(10 * var(--layout-space));
+  display: grid;
+  gap: calc(8 * var(--layout-space));
+}
+
+.desktop-view-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.desktop-view-tabs [role="tab"] {
+  flex: 1;
+  min-width: 0;
+  padding: calc(8 * var(--layout-space)) calc(12 * var(--layout-space));
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.desktop-view-tabs [role="tab"]:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+
+.desktop-view-tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+
+.desktop-view-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.desktop-attachment body {
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.attachment-shell {
+  height: 100vh;
+  padding: calc(8 * var(--layout-space));
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--layout-space));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--page) calc(var(--desktop-opacity, .7) * 100%), transparent);
+}
+
+.attachment-drag {
+  flex: 1;
+  padding: calc(4 * var(--layout-space)) calc(8 * var(--layout-space));
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.desktop-locked .attachment-drag { cursor: default; }
+
+.attachment-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) calc(var(--desktop-opacity, .7) * 100%), transparent);
+}
+
+.attachment-content .adjustment-panel {
+  max-height: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.attachment-content .adjustment-panel .adjustment-list { grid-template-columns: minmax(0, 1fr); }
+
+.attachment-content .adjustment-main {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--layout-space));
+}
+
+.attachment-content .adjustment-date {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-content .adjustment-main strong { max-width: 30%; font-size: 10px; }
+.attachment-content .adjustment-main small { flex: none; white-space: nowrap; }
+
+.attachment-content > .panel-section {
+  margin-bottom: calc(8 * var(--layout-space));
+}
+
+.platform-desktop .empty-state {
+  display: block;
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  padding: calc(8 * var(--layout-space)) calc(12 * var(--layout-space));
+  border-radius: 8px;
+  background: var(--panel-muted);
+  color: var(--muted);
+  font-size: inherit;
+  line-height: 1.5;
+}
+
+#attachment-error {
+  margin: 0;
+  color: var(--error-strong);
+  overflow-wrap: anywhere;
+}
+
+.desktop-dialog-heading {
+  margin-bottom: calc(12 * var(--layout-space));
+}
+
+.desktop-todo-dialog {
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.desktop-todo-dialog form {
+  padding: calc(16 * var(--layout-space));
+  display: grid;
+  gap: calc(12 * var(--layout-space));
+}
+
+.desktop-todo-dialog .dialog-heading,
+.desktop-todo-dialog .dialog-actions,
+.desktop-todo-dialog .field-label { margin: 0; }
+
+.desktop-todo-field {
+  display: grid;
+  gap: calc(6 * var(--layout-space));
+}
+
+.desktop-todo-dialog textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: calc(10 * var(--layout-space)) calc(12 * var(--layout-space));
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.desktop-todo-dialog textarea::placeholder { color: var(--faint); }
+.desktop-todo-dialog textarea:focus { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 13%, transparent); }
+
+.desktop-todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: calc(8 * var(--layout-space));
+}
+
+.attachment-content #desktop-todos { padding-bottom: calc(80 * var(--layout-space)); }
+
+.desktop-add-todo-fab {
+  position: fixed;
+  right: calc(18 * var(--layout-space));
+  bottom: calc(18 * var(--layout-space));
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-text);
+  box-shadow: 0 4px 16px rgba(19, 24, 21, 0.22);
+}
+
+.desktop-add-todo-fab svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.desktop-add-todo-fab:hover { background: var(--primary-hover); }
+.desktop-add-todo-fab:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+.desktop-todo-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(8 * var(--layout-space));
+}
+
+.desktop-todo-list button[data-todo-edit] {
+  flex: 1;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.desktop-todo-indicator {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  min-width: 16px;
+  border-radius: 6px;
+  padding: calc(1 * var(--layout-space)) calc(3 * var(--layout-space));
+  background: var(--primary);
+  color: var(--primary-text);
+  z-index: 2;
+  font-size: 10px;
+}
+
+.desktop-context {
+  position: fixed;
+  display: grid;
+  gap: calc(6 * var(--layout-space));
+  min-width: 130px;
+  padding: calc(8 * var(--layout-space));
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 4px 20px #0004;
+  z-index: 100;
+}
+
+.desktop-context button {
+  padding: calc(8 * var(--layout-space)) calc(12 * var(--layout-space));
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.desktop-context button:hover { background: var(--hover); }
+.desktop-context button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.desktop-resize {
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  z-index: 200;
+}
+
+/* 桌面几何尺寸沿用公共密度，间距由公共比例统一计算。 */
+:root.platform-desktop[data-layout-density="compact"] {
+  --compact-calendar-width: calc(7 * 84px * var(--layout-scale) + 80 * var(--layout-space));
+}
+:root.platform-desktop[data-layout-density="compact"] .summary-band { width: min(100%, var(--compact-calendar-width)); margin: 0 auto; }
+:root.platform-desktop[data-layout-density="compact"] .workspace { width: min(100%, var(--compact-calendar-width)); padding: 0; }
+:root.platform-desktop[data-layout-density="compact"] .calendar-board { width: 100%; }
+:root.platform-desktop[data-layout-density="compact"] .calendar-grid,
+:root.platform-desktop[data-layout-density="compact"] .weekday-header { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+:root.platform-desktop[data-layout-density="compact"] .calendar-side-button,
+:root.platform-desktop[data-layout-density="compact"] .calendar-today-button { width: calc(30px * var(--layout-scale)); height: calc(30px * var(--layout-scale)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-titlebar button { width: calc(28px * var(--layout-scale)); height: calc(28px * var(--layout-scale)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-sidebar-toggle svg { width: calc(20px * var(--layout-scale)); height: calc(20px * var(--layout-scale)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-todo-dialog { width: min(calc(480px * var(--layout-scale)), calc(100vw - 24px)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-add-todo-fab { width: calc(44px * var(--layout-scale)); height: calc(44px * var(--layout-scale)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-add-todo-fab svg { width: calc(24px * var(--layout-scale)); height: calc(24px * var(--layout-scale)); }
+:root.platform-desktop[data-layout-density="compact"] .desktop-context { min-width: calc(130px * var(--layout-scale)); }
+
+.desktop-resize.nw { top: 0; left: 0; cursor: nw-resize; }
+
+.desktop-resize.ne { top: 0; right: 0; cursor: ne-resize; }
+
+.desktop-resize.sw { bottom: 0; left: 0; cursor: sw-resize; }
+
+.desktop-resize.se { bottom: 0; right: 0; cursor: se-resize; }
+
+.desktop-locked .desktop-resize {
+  display: none;
+}

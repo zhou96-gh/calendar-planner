@@ -1,0 +1,21 @@
+[package]
+name = "desktop-calendar-todo"
+version = "2.0.20"
+description = "Windows desktop calendar and todo widget"
+authors = ["Desktop Calendar Todo"]
+edition = "2021"
+
+[lib]
+name = "desktop_calendar_todo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.5", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-single-instance = "2.4.4"

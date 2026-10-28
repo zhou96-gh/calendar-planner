@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+node_modules/
+web-dist/
+src-tauri/target/
+src-tauri/gen/
+*.db
+*.db-shm
+*.db-wal

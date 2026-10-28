@@ -1,0 +1,24 @@
+{
+  "name": "calendar-planner",
+  "version": "2.0.20",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tauri dev",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "build:offline": "node scripts/build-offline.js",
+    "build:windows": "node scripts/windows/build.js",
+    "verify:build": "node scripts/verify-build.js",
+    "test": "node --test",
+    "test:native": "cargo test --offline --manifest-path src-tauri/Cargo.toml",
+    "check": "node scripts/check.js && cargo check --offline --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "vite": "7.3.6"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  }
+}

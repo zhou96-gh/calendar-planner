@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>假期安排</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <section id="summary-band" class="summary-band" aria-label="本月统计">
+        <div class="summary-item balance rest-balance"><span>缺班</span><strong id="summary-rest-balance">0</strong><small>天</small></div>
+        <div class="summary-item balance work-balance"><span>未休</span><strong id="summary-work-balance">0</strong><small>天</small></div>
+        <div class="summary-item"><span>本月休息</span><strong id="summary-rest">0</strong><small>天</small></div>
+        <div class="summary-item pure"><span>放假</span><strong id="summary-pure">0</strong><small>天</small></div>
+        <div class="summary-item"><span>休息</span><strong id="summary-schedule">0</strong><small>天</small></div>
+      </section>
+
+      <main id="calendar-view" class="workspace">
+        <section class="calendar-panel">
+          <div class="calendar-toolbar">
+            <div class="legend" aria-label="日历图例">
+            <span><i class="legend-dot pure-dot"></i>放假</span>
+            <span><i class="legend-dot arranged-dot"></i>调休</span>
+            <span><i class="legend-dot rest-dot"></i>休息</span>
+            <span><i class="legend-dot manual-work-dot"></i>补班</span>
+            <span><i class="legend-dot suggestion-dot"></i>法定调休</span>
+            <span><i class="legend-dot work-dot"></i>法定补班</span>
+            <span><i class="legend-border"></i>连休</span>
+            </div>
+          </div>
+          <div class="calendar-stage">
+            <button id="calendar-prev-month" class="calendar-side-button" type="button" title="上个月" aria-label="日历上个月">‹</button>
+            <div id="calendar-navigation" class="month-nav" aria-label="月份导航">
+              <strong id="month-title"></strong>
+            </div>
+            <div class="calendar-board">
+              <div id="weekday-header" class="weekday-header" aria-hidden="true">
+                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+              </div>
+              <div id="calendar-grid" class="calendar-grid"></div>
+            </div>
+            <div class="calendar-side-actions">
+              <button id="calendar-next-month" class="calendar-side-button" type="button" title="下个月" aria-label="日历下个月">›</button>
+              <button id="today-button" class="calendar-today-button" type="button" title="返回今天" aria-label="今天">今</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="adjustment-panel panel-section">
+          <div class="section-heading"><h2>调休与补班记录</h2><span id="adjustment-record-count" class="count-badge">0 条</span></div>
+          <div id="adjustment-record-list" class="adjustment-list"></div>
+        </section>
+
+        <aside class="result-panel">
+          <details id="selected-date-section" class="panel-section result-section" open>
+            <summary class="section-heading"><h2>节日明细</h2><span id="selected-festival-count" class="count-badge">0 个</span></summary>
+            <div class="selected-date-meta">
+              <strong id="selected-date-label"></strong>
+              <small id="selected-date-lunar"></small>
+              <small id="selected-day-status"></small>
+            </div>
+            <ul id="selected-festival-list" class="festival-detail-list"></ul>
+          </details>
+          <details id="year-holiday-section" class="panel-section result-section" open>
+            <summary class="section-heading"><h2><span id="result-year"></span> 放假</h2><span id="year-pure-count" class="count-badge">0 天</span></summary>
+            <div id="pure-holiday-list" class="holiday-list"></div>
+          </details>
+          <details id="expired-holiday-section" class="panel-section result-section" hidden>
+            <summary class="section-heading"><h2>已过期假期</h2><span id="expired-holiday-count" class="count-badge muted">0 天</span></summary>
+            <div id="expired-holiday-list" class="holiday-list compact"></div>
+          </details>
+        </aside>
+        <button id="settings-toggle" class="settings-fab" type="button" title="设置" aria-label="打开设置" aria-controls="settings-view">&#9881;</button>
+      </main>
+
+      <main id="settings-view" class="settings-view" hidden>
+        <div class="settings-content">
+          <div class="settings-tabs" role="tablist" aria-label="设置分类">
+            <button id="appearance-settings-tab" type="button" role="tab" aria-controls="appearance-settings" aria-selected="true">外观</button>
+            <button id="weekend-settings-tab" type="button" role="tab" aria-controls="weekend-settings" aria-selected="false" tabindex="-1">周末设置</button>
+            <button id="holiday-data-settings-tab" type="button" role="tab" aria-controls="holiday-data-settings" aria-selected="false" tabindex="-1">节假日数据</button>
+          </div>
+
+          <div class="settings-panel">
+            <section id="appearance-settings" class="settings-group" role="tabpanel" aria-labelledby="appearance-settings-tab" tabindex="0">
+              <h3>外观</h3>
+              <span class="field-label">全局排版</span>
+              <div id="layout-density" class="segmented-control" role="group" aria-label="全局排版">
+                <button type="button" data-value="compact" aria-pressed="false">紧致</button>
+                <button type="button" data-value="spacious" aria-pressed="true">宽松</button>
+              </div>
+              <span class="field-label">明暗模式</span>
+              <div id="appearance-mode" class="segmented-control appearance-control" role="group" aria-label="明暗模式">
+                <button type="button" data-value="system">跟随系统</button>
+                <button type="button" data-value="light">浅色</button>
+                <button type="button" data-value="dark">深色</button>
+              </div>
+              <label class="field-label" for="color-scheme">配色方案</label>
+              <select id="color-scheme" class="color-scheme-select" aria-label="配色方案">
+                <option value="default">默认配色</option>
+                <option value="custom">自定义</option>
+              </select>
+              <span class="field-label">编辑配色</span>
+              <div id="color-mode" class="segmented-control color-mode-control" role="group" aria-label="编辑配色模式">
+                <button type="button" data-value="light">浅色配色</button>
+                <button type="button" data-value="dark">深色配色</button>
+              </div>
+              <div id="color-grid" class="color-grid">
+                <details class="color-group" open>
+                  <summary>页面与文字</summary>
+                  <div class="color-group-grid">
+                    <div class="color-row">
+                      <label>页面背景<input type="color" data-color-token="page" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>内容背景<input type="color" data-color-token="surface" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>侧栏背景<input type="color" data-color-token="panel" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>次级区域<input type="color" data-color-token="panel-muted" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>顶栏背景<input type="color" data-color-token="header" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>顶栏文字<input type="color" data-color-token="header-text" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>顶栏辅助文字<input type="color" data-color-token="header-muted" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>正文文字<input type="color" data-color-token="text" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>次级文字<input type="color" data-color-token="muted" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>弱化文字<input type="color" data-color-token="faint" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>目录背景<input type="color" data-color-token="toc-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="toc-bg" aria-label="目录背景透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                  </div>
+                </details>
+                <details class="color-group">
+                  <summary>控件与边框</summary>
+                  <div class="color-group-grid">
+                    <div class="color-row">
+                      <label>普通边框<input type="color" data-color-token="border" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>重点边框<input type="color" data-color-token="border-strong" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>控件底色<input type="color" data-color-token="control" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>悬停底色<input type="color" data-color-token="hover" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>危险操作悬停<input type="color" data-color-token="warm-hover" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>数量底色<input type="color" data-color-token="badge-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>强调按钮<input type="color" data-color-token="primary" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>强调按钮悬停<input type="color" data-color-token="primary-hover" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>强调按钮文字<input type="color" data-color-token="primary-text" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>错误提示<input type="color" data-color-token="error-strong" /></label>
+                      <output></output>
+                    </div>
+                  </div>
+                </details>
+                <details class="color-group">
+                  <summary>日历与状态</summary>
+                  <div class="color-group-grid">
+                    <div class="color-row">
+                      <label>休息背景<input type="color" data-color-token="rest-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="rest-bg" aria-label="休息背景透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                    <div class="color-row">
+                      <label>放假背景<input type="color" data-color-token="holiday-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="holiday-bg" aria-label="放假背景透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                    <div class="color-row">
+                      <label>调休背景<input type="color" data-color-token="manual-rest-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="manual-rest-bg" aria-label="调休背景透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                    <div class="color-row">
+                      <label>补班背景<input type="color" data-color-token="manual-work-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="manual-work-bg" aria-label="补班背景透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                    <div class="color-row">
+                      <label>休息文字<input type="color" data-color-token="green" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>放假文字<input type="color" data-color-token="red" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>补班文字<input type="color" data-color-token="purple" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>建议文字<input type="color" data-color-token="gold" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>半天斜纹<input type="color" data-color-token="stripe" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="stripe" aria-label="半天斜纹透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                  </div>
+                </details>
+                <details class="color-group">
+                  <summary>标签与提示</summary>
+                  <div class="color-group-grid">
+                    <div class="color-row">
+                      <label>补班标签<input type="color" data-color-token="tag-work-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>建议标签<input type="color" data-color-token="tag-suggestion-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>放假标签<input type="color" data-color-token="tag-holiday-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>计算提示<input type="color" data-color-token="preview-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>错误预览<input type="color" data-color-token="preview-error-bg" /></label>
+                      <output></output>
+                    </div>
+                    <div class="color-row">
+                      <label>通用标签<input type="color" data-color-token="tag-neutral-bg" /></label>
+                      <output></output>
+                      <label class="alpha-row">透明度<input type="range" data-alpha-token="tag-neutral-bg" aria-label="通用标签透明度" min="0" max="100" /><output></output></label>
+                    </div>
+                  </div>
+                </details>
+              </div>
+              <div id="color-preview" class="color-preview" role="group" aria-label="配色预览">
+                <div class="color-preview-heading"><strong>2026 年 9 月</strong><span>今天</span></div>
+                <div class="color-preview-days"><span>休息</span><span>放假</span><span>调休</span><span>补班</span></div>
+                <div class="color-preview-details"><span>目录</span><span>半天</span><span>通用标签</span></div>
+              </div>
+              <div class="color-actions">
+                <button id="import-custom-colors" class="secondary-button" type="button">导入配色</button>
+                <button id="reset-custom-colors" class="secondary-button color-reset" type="button">恢复默认配色</button>
+                <input id="color-import-file" type="file" accept="application/json,.json" hidden />
+              </div>
+              <details class="color-import-guide">
+                <summary>配色 JSON 结构</summary>
+                <pre><code>{
+  "light": { "page": "#eef0ed", "stripe": "#26756824" },
+  "dark": { "page": "#141a16", "stripe": "#75d0b130" }
+}</code></pre>
+                <p><code>light</code>、<code>dark</code> 均必填；只需列出要自定义的颜色。导入会替换两套配色，未列出的颜色恢复默认。</p>
+                <p>普通颜色用 <code>#RRGGBB</code>；<code>toc-bg</code>、<code>stripe</code>、<code>tag-neutral-bg</code> 用 <code>#RRGGBBAA</code>。四种日期背景 <code>rest-bg</code>、<code>holiday-bg</code>、<code>manual-rest-bg</code>、<code>manual-work-bg</code> 可用 <code>#RRGGBB</code>（不透明）或 <code>#RRGGBBAA</code>。透明度滑杆 <code>0%</code> 完全不透明、<code>100%</code> 完全透明；JSON 末尾 <code>00</code> 全透明、<code>ff</code> 完全不透明。完整数据导出文件也可导入，读取其中的 <code>customColors</code>。</p>
+                <dl class="color-import-fields">
+                <dt>页面与文字</dt><dd><code>page, surface, panel, panel-muted, header, header-text, header-muted, text, muted, faint, toc-bg</code></dd>
+                <dt>控件与边框</dt><dd><code>border, border-strong, control, hover, warm-hover, badge-bg, primary, primary-hover, primary-text, error-strong</code></dd>
+                <dt>日历与状态</dt><dd><code>rest-bg, holiday-bg, manual-rest-bg, manual-work-bg, green, red, purple, gold, stripe</code></dd>
+                <dt>标签与提示</dt><dd><code>tag-work-bg, tag-suggestion-bg, tag-holiday-bg, preview-bg, preview-error-bg, tag-neutral-bg</code></dd>
+                </dl>
+              </details>
+            </section>
+            <section id="weekend-settings" class="settings-group" role="tabpanel" aria-labelledby="weekend-settings-tab" tabindex="0" hidden>
+              <h3>周末设置</h3>
+              <label class="field-label" for="week-starts-on">每周开始于</label>
+              <select id="week-starts-on">
+                <option value="6">周日</option>
+                <option value="0">周一</option>
+                <option value="1">周二</option>
+                <option value="2">周三</option>
+                <option value="3">周四</option>
+                <option value="4">周五</option>
+                <option value="5">周六</option>
+              </select>
+              <label class="field-label" for="anchor-monday">配置起始周一</label>
+              <input id="anchor-monday" type="date" required />
+              <span class="field-label">周末预设</span>
+              <div id="weekend-preset" class="segmented-control preset-control">
+                <button type="button" data-value="double">双休</button>
+                <button type="button" data-value="single">单休</button>
+                <button type="button" data-value="alternating">大小休</button>
+              </div>
+              <fieldset class="weekend-period-settings">
+                <legend>周末自定义</legend>
+                <div class="weekend-period-row" data-weekend-day="5">
+                  <span>周六</span>
+                  <div class="segmented-control weekend-period-control">
+                    <button type="button" data-value="full">全天</button>
+                    <button type="button" data-value="am">上午</button>
+                    <button type="button" data-value="pm">下午</button>
+                    <button type="button" data-value="none">上班</button>
+                  </div>
+                  <label class="repeat-field"><input class="weekend-repeat-interval" type="number" min="0" max="52" step="1" value="0" /><span>间隔（周）</span></label>
+                </div>
+                <div class="weekend-period-row" data-weekend-day="6">
+                  <span>周日</span>
+                  <div class="segmented-control weekend-period-control">
+                    <button type="button" data-value="full">全天</button>
+                    <button type="button" data-value="am">上午</button>
+                    <button type="button" data-value="pm">下午</button>
+                    <button type="button" data-value="none">上班</button>
+                  </div>
+                  <label class="repeat-field"><input class="weekend-repeat-interval" type="number" min="0" max="52" step="1" value="0" /><span>间隔（周）</span></label>
+                </div>
+              </fieldset>
+            </section>
+
+            <section id="holiday-data-settings" class="settings-group data-actions" role="tabpanel" aria-labelledby="holiday-data-settings-tab" tabindex="0" hidden>
+              <h3>节假日数据</h3>
+              <p id="data-status" class="settings-data-status">已载入 2026 年官方安排</p>
+              <p>节日日期在本地计算。这里可导入、导出法定假期安排，或重置指定年份的数据。</p>
+              <div class="button-row">
+                <button id="import-data" class="secondary-button" type="button">导入假期安排</button>
+                <button id="export-data" class="secondary-button" type="button">导出假期安排</button>
+              </div>
+              <div class="button-row">
+                <input id="reset-year" type="number" min="1900" max="2200" step="1" aria-label="重置年份" />
+                <button id="reset-data" class="quiet-button" type="button">重置该年数据</button>
+              </div>
+              <p>重置会重新获取该年的官方安排，并清理该年的日期修正、个人调休和补班；其他年份和设置保留。获取失败时不清理原数据。</p>
+              <input id="import-file" type="file" accept="application/json,.json" hidden />
+              <details class="color-import-guide data-import-guide">
+                <summary>假期安排 JSON 结构</summary>
+                <pre><code>{
+  "version": 7,
+  "holidayData": {
+    "blocks": [{
+      "startDay": "2026-10-01", "endDay": "2026-10-03",
+      "name": "示例假期", "legalDays": 2, "makeupDays": 1,
+      "dates": ["2026-10-01", "2026-10-03"]
+    }],
+    "days": { "2026-09-25": { "kind": "legal", "name": "中秋节" } }
+  },
+  "loadedYears": [2026]
+}</code></pre>
+                <p>导入会替换文件涉及年份的全部假期安排及日期修正，保留其他年份、设置、配色和个人调班。<code>version</code> 必须为 <code>7</code>，旧版本文件不支持；原完整备份仅提取假期安排。</p>
+                <dl class="data-import-fields">
+                  <dt><code>holidayData</code></dt><dd><code>blocks</code> 为节假日区间；<code>dates</code> 可选，仅保留区间中指定的日期。不在区间内的修正日期放在 <code>days</code>，类型为 <code>legal/off/work</code>。</dd>
+                  <dt><code>loadedYears</code></dt><dd>文件已载入年份，可省略；导入只替换实际包含日期的年份。全部日期使用 <code>YYYY-MM-DD</code>。</dd>
+                </dl>
+                <p>也支持直接导入 <code>holiday-cn</code> 年度 JSON：包含 <code>year</code> 和 <code>days</code>，每项为 <code>{ "date": "2027-01-01", "name": "元旦", "isOffDay": true }</code>。空年度数据不能导入。</p>
+              </details>
+            </section>
+          </div>
+        </div>
+      </main>
+      <button id="settings-floating-back" class="settings-back-fab" type="button" title="返回日历" aria-label="返回日历" hidden>&larr;</button>
+    </div>
+
+    <dialog id="adjustment-dialog">
+      <form method="dialog" id="adjustment-form">
+        <div class="dialog-heading">
+          <div><h2 id="adjustment-dialog-title">新增调班</h2></div>
+          <button class="icon-button" type="button" data-dialog-close title="关闭" aria-label="关闭">×</button>
+        </div>
+        <div id="adjustment-type" class="adjustment-type-control" role="tablist" aria-label="编辑操作">
+          <button id="adjustment-tab" type="button" role="tab" aria-controls="adjustment-fields" data-value="adjustment">调班</button>
+          <button id="correction-tab" type="button" role="tab" aria-controls="correction-fields" data-value="correction">修正</button>
+        </div>
+        <div id="adjustment-fields" role="tabpanel" aria-labelledby="adjustment-tab">
+          <div class="association-row">
+            <span id="association-label" class="field-label">关联类型</span>
+            <div id="counterpart-type" class="association-options" role="radiogroup" aria-labelledby="association-label">
+              <label><input type="radio" name="association-type" value="required" />需要</label>
+              <label><input type="radio" name="association-type" value="none" />不需要</label>
+            </div>
+          </div>
+          <div id="rest-range-section">
+            <div class="range-section-heading"><span class="field-label">调休日期</span><button id="add-rest-range" class="range-add icon-button" type="button" title="添加调休范围" aria-label="添加调休范围">+</button></div>
+            <div id="rest-range-list" class="adjustment-range-list"></div>
+          </div>
+          <div id="work-range-section">
+            <div class="range-section-heading"><span class="field-label">补班日期</span><button id="add-work-range" class="range-add icon-button" type="button" title="添加补班范围" aria-label="添加补班范围">+</button></div>
+            <div id="work-range-list" class="adjustment-range-list"></div>
+          </div>
+          <label class="field-label" for="adjustment-note">备注</label>
+          <input id="adjustment-note" type="text" maxlength="30" placeholder="可选" />
+          <div id="adjustment-preview" class="date-preview"></div>
+        </div>
+        <template id="adjustment-range-template">
+          <div class="adjustment-range-row">
+            <div class="range-endpoint" role="group" aria-label="开始">
+              <input data-range-field="startDate" type="date" title="开始日期" aria-label="开始日期" required />
+              <select data-range-field="startPeriod" title="开始时段" aria-label="开始时段"><option value="am">上午</option><option value="pm">下午</option></select>
+            </div>
+            <span class="range-separator" aria-hidden="true">→</span>
+            <div class="range-endpoint" role="group" aria-label="结束">
+              <input data-range-field="endDate" type="date" title="结束日期" aria-label="结束日期" required />
+              <select data-range-field="endPeriod" title="结束时段" aria-label="结束时段"><option value="am">上午</option><option value="pm">下午</option></select>
+            </div>
+            <button class="range-remove icon-button" type="button" data-remove-range title="移除范围" aria-label="移除范围">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </template>
+        <div id="correction-fields" role="tabpanel" aria-labelledby="correction-tab" hidden>
+          <label class="field-label" for="edit-date">日期</label>
+          <input id="edit-date" type="date" required />
+          <label class="field-label" for="edit-kind">类型</label>
+          <select id="edit-kind">
+            <option value="">无官方安排</option>
+            <option value="legal">放假</option>
+            <option value="off">周末 / 调休</option>
+            <option value="work">法定补班</option>
+          </select>
+          <label class="field-label" for="edit-name">名称</label>
+          <input id="edit-name" type="text" maxlength="30" placeholder="例如：国庆节" />
+          <div id="date-preview" class="date-preview"></div>
+        </div>
+        <div class="dialog-actions">
+          <button id="new-adjustment" class="secondary-button" type="button" hidden>新增</button>
+          <button class="secondary-button" type="button" data-dialog-close>取消</button>
+          <button id="save-adjustment" class="primary-button" value="default" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="adjustment-picker" aria-labelledby="adjustment-picker-title">
+      <div class="adjustment-picker-content">
+        <div class="dialog-heading">
+          <div><span class="eyebrow">半天安排</span><h2 id="adjustment-picker-title"></h2></div>
+          <button class="icon-button" type="button" data-picker-close title="关闭" aria-label="关闭">×</button>
+        </div>
+        <div id="adjustment-picker-list" class="adjustment-picker-list"></div>
+        <div class="dialog-actions">
+          <button id="picker-correction" class="secondary-button" type="button">修正日期</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script defer src="src/startup.js"></script>
+  </body>
+</html>
