@@ -11,6 +11,9 @@ assert.ok(entry, '桌面入口必须引用构建后的模块');
 const entryPath = join(web, entry.replace(/^\//, ''));
 assert.ok(existsSync(entryPath), '桌面入口模块必须存在');
 assert.ok(!html.includes('src/startup.js'), '桌面包不能保留未打包的轻量入口');
+const webAssets = readdirSync(join(web, 'assets'));
+const hasRecommendationWindow = webAssets.some((name) => name.startsWith('recommendation-window-') && name.endsWith('.js'));
+assert.ok(hasRecommendationWindow, '桌面包必须包含独立休假推荐窗口入口');
 const plugin = JSON.parse(readFileSync(join(pluginRoot, 'plugin.json'), 'utf8'));
 
 for (const file of [plugin.main, plugin.preload, plugin.logo, 'themes/index.json', 'src/vendor/lunar.LICENSE']) {

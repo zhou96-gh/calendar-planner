@@ -1,5 +1,6 @@
 import './styles.css';
 import { connectAttachments } from './attachment-bridge.js';
+import { connectRecommendations } from './recommendation-bridge.js';
 
 /**
  * 桌面只扩展宿主能力与待办；月历、调班、节日及设置仍使用公共页面。
@@ -518,4 +519,7 @@ export async function mountDesktop(platform, application) {
   const notify = (error) => application.notify(String(error.message || error), true);
   const attachmentContext = { platform, sources, notify };
   await connectAttachments(attachmentContext);
+  const dialog = query('#vacation-recommendation-dialog');
+  const recommendationContext = { platform, application, dialog, notify };
+  await connectRecommendations(recommendationContext);
 }

@@ -58,7 +58,7 @@ export async function connectAttachments(context) {
     }
 
     try {
-      if (!['view', 'todo-toggle'].includes(payload.kind)) await platform.invoke('focus_calendar');
+      if (!['view', 'todo-toggle', 'holiday'].includes(payload.kind)) await platform.invoke('focus_calendar');
 
       target = findAttachmentTarget(sources, payload);
 

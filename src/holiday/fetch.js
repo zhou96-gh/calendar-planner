@@ -98,14 +98,32 @@ export function transformHolidayPayload(payload, requestedYear) {
   return records;
 }
 
+/**
+ * 多源并发读取，首个有效年度胜出；单源超时不阻塞备用源，完成后取消其余请求。
+ */
 export async function fetchHolidayYear(year, fetchImplementation = fetch) {
-  let lastError = null;
-  let unavailableError = null;
+  const yearValue = String(year);
+  const controllers = [];
+  const timers = [];
 
-  for (const source of HOLIDAY_SOURCES) {
-    try {
-      const url = source.replace('{year}', String(year));
-      const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
+  const load = (source) => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    let timer;
+
+    const deadline = new Promise((_resolve, reject) => {
+      const onTimeout = () => {
+        reject(new Error(`${year} 年假期数据请求超时`));
+        controller.abort();
+      };
+
+      timer = setTimeout(onTimeout, 5000);
+      timers.push(timer);
+    });
+
+    const request = async () => {
+      const url = source.replace('{year}', yearValue);
+      const options = { cache: 'no-store', headers: { Accept: 'application/json' }, signal: controller.signal };
       const response = await fetchImplementation(url, options);
 
       if (response.status === 404) throw new HolidayDataUnavailableError(year);
@@ -114,14 +132,26 @@ export async function fetchHolidayYear(year, fetchImplementation = fetch) {
 
       const payload = await response.json();
       return transformHolidayPayload(payload, year);
-    } catch (error) {
-      lastError = error;
+    };
 
-      if (error instanceof HolidayDataUnavailableError) unavailableError = error;
-    }
+    const pending = request();
+    const attempts = [pending, deadline];
+    return Promise.race(attempts).finally(() => clearTimeout(timer));
+  };
+
+  const requests = HOLIDAY_SOURCES.map(load);
+
+  try {
+    return await Promise.any(requests);
+  } catch (error) {
+    const unavailable = error.errors.find((item) => item instanceof HolidayDataUnavailableError);
+
+    if (unavailable) throw unavailable;
+
+    const lastError = error.errors.at(-1);
+    throw new Error(lastError?.message || '节假日数据获取失败');
+  } finally {
+    timers.forEach((timer) => clearTimeout(timer));
+    controllers.forEach((controller) => controller.abort());
   }
-
-  if (unavailableError) throw unavailableError;
-
-  throw new Error(lastError?.message || '节假日数据获取失败');
 }

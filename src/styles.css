@@ -1012,6 +1012,7 @@ fieldset { margin: calc(12 * var(--layout-space)) 0 0; padding: 0; border: 0; }
 }
 
 .holiday-row small { color: var(--muted); font-size: 9px; }
+.holiday-row .holiday-recommendation { margin-inline-start: calc(6 * var(--layout-space)); font-weight: 400; }
 .holiday-list.compact .holiday-row { min-height: 42px; opacity: 0.76; }
 
 .empty-state {
@@ -1031,6 +1032,124 @@ dialog {
 }
 
 dialog::backdrop { background: rgba(20, 24, 22, 0.42); }
+#vacation-recommendation-dialog {
+  width: min(calc(1000px * var(--layout-scale)), calc(100vw - 32 * var(--layout-space)));
+  max-height: calc(100vh - 32 * var(--layout-space));
+  max-height: calc(100dvh - 32 * var(--layout-space));
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--text);
+}
+.vacation-recommendation-content {
+  max-height: calc(100vh - 32 * var(--layout-space));
+  max-height: calc(100dvh - 32 * var(--layout-space));
+  padding: calc(16 * var(--layout-space));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dialog-heading.recommendation-heading { align-items: center; margin-bottom: calc(8 * var(--layout-space)); }
+.recommendation-heading button.icon-button[data-recommendation-close] {
+  width: calc(24px * var(--layout-scale));
+  min-height: calc(24px * var(--layout-scale));
+  border-radius: 4px;
+  font-size: 20px;
+}
+.recommendation-checkbox {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--layout-space));
+  margin-top: calc(12 * var(--layout-space));
+  font-size: 12px;
+}
+.recommendation-help { margin: calc(12 * var(--layout-space)) 0; color: var(--muted); font-size: 11px; }
+.recommendation-display-guide { margin-top: calc(12 * var(--layout-space)); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.recommendation-display-guide > summary { color: var(--text); font-weight: 600; cursor: pointer; }
+.recommendation-display-guide > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.recommendation-display-guide ul {
+  display: grid;
+  gap: calc(6 * var(--layout-space));
+  margin: calc(8 * var(--layout-space)) 0 0;
+  padding-inline-start: calc(18 * var(--layout-space));
+}
+.recommendation-display-guide code { color: var(--text); font-size: inherit; white-space: nowrap; }
+.recommendation-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: calc(28px + 8 * var(--layout-space));
+  gap: calc(12 * var(--layout-space));
+  margin: calc(10 * var(--layout-space)) 0;
+  padding-block: calc(4 * var(--layout-space));
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.recommendation-controls .recommendation-field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6 * var(--layout-space));
+  margin: 0;
+  white-space: nowrap;
+}
+.recommendation-controls .recommendation-checkbox { flex: none; gap: calc(6 * var(--layout-space)); margin-top: 0; white-space: nowrap; }
+.recommendation-controls input[type="number"] { height: 28px; min-height: 28px; padding-inline: calc(6 * var(--layout-space)); border-radius: 4px; }
+.recommendation-field > .field-label { margin: 0; }
+#recommendation-maximum { width: calc(64px * var(--layout-scale)); }
+#recommendation-leave-days { width: calc(64px * var(--layout-scale)); }
+#recommendation-work-maximum { width: calc(112px * var(--layout-scale)); }
+#vacation-recommendation-results { overflow-x: auto; }
+.vacation-recommendation-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 12px;
+}
+.vacation-recommendation-table th, .vacation-recommendation-table td {
+  padding: calc(12 * var(--layout-space)) calc(8 * var(--layout-space));
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.vacation-recommendation-table thead { background: var(--panel-muted); }
+.recommendation-selection-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(12 * var(--layout-space));
+  margin-bottom: calc(12 * var(--layout-space));
+}
+.recommendation-selection-status button { flex: none; }
+.vacation-recommendation-table thead th:nth-child(1) { width: 12%; }
+.vacation-recommendation-table thead th:nth-child(2) { width: 22%; }
+.vacation-recommendation-table thead th:nth-child(3) { width: 21%; }
+.vacation-recommendation-table thead th:nth-child(4) { width: 15%; }
+.vacation-recommendation-table thead th:nth-child(5) { width: 20%; }
+.vacation-recommendation-table thead th:nth-child(6) { width: 10%; }
+.vacation-recommendation-table p { margin: 0; }
+.vacation-recommendation-table .recommendation-day-count {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.recommendation-range-list { display: grid; gap: calc(6 * var(--layout-space)); margin: 0; padding: 0; list-style: none; }
+.recommendation-range-list:empty { display: none; }
+.recommendation-range-list:not(:empty) + .recommendation-range-list { margin-top: calc(6 * var(--layout-space)); }
+.recommendation-statistic-items {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: calc(6 * var(--layout-space)) calc(12 * var(--layout-space));
+}
+.recommendation-range-list .recommendation-date-label { white-space: nowrap; overflow-wrap: normal; }
+.vacation-recommendation-table .secondary-button,
+.recommendation-selection-status .secondary-button {
+  min-height: 26px;
+  max-width: 100%;
+  padding-inline: calc(8 * var(--layout-space));
+  border-radius: 4px;
+  white-space: nowrap;
+}
 #adjustment-form { padding: calc(16 * var(--layout-space)); }
 .adjustment-picker-content { padding: calc(20 * var(--layout-space)); }
 .adjustment-picker-list { display: grid; gap: calc(6 * var(--layout-space)); max-height: min(50vh, 360px); overflow-y: auto; }

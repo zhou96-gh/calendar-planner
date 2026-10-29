@@ -54,7 +54,7 @@ async function createBridgeHarness(options = {}) {
   const pending = new Promise((resolve) => { complete = resolve; });
 
   const target = {
-    dataset: { todoToggle: 'todo-1', todoEdit: 'todo-1' },
+    dataset: { todoToggle: 'todo-1', todoEdit: 'todo-1', date: '2026-10-01' },
     dispatchEvent(event) {
       const operation = pending.then(() => { currentHtml = 'saved'; });
       event.calendarActions.push(operation);
@@ -63,7 +63,7 @@ async function createBridgeHarness(options = {}) {
   let currentTarget = target;
 
   const info = {
-    querySelectorAll: (selector) => ['[data-todo-toggle]', '[data-todo-edit]'].includes(selector) ? [currentTarget] : [],
+    querySelectorAll: (selector) => ['[data-todo-toggle]', '[data-todo-edit]', '.holiday-row'].includes(selector) ? [currentTarget] : [],
     cloneNode: () => ({ querySelectorAll: () => [], innerHTML: currentHtml })
   };
 
@@ -146,6 +146,19 @@ test('附着窗口就绪可补发快照，非法动作不触发主窗口业务',
   assert.equal(harness.emitted.length, 6);
   assert.equal(harness.errors.length, 0);
 });
+
+const testHolidayWindow = async () => {
+  const harness = await createBridgeHarness();
+  const handler = harness.listeners.get('attachment-action');
+  const event = { payload: { kind: 'holiday', value: '2026-10-01' } };
+  const handling = handler(event);
+  harness.complete();
+  await handling;
+  assert.equal(harness.errors.length, 0);
+  assert.equal(harness.emitted.length, 4);
+};
+
+test('假日侧栏打开独立推荐窗时不先激活主窗口', testHolidayWindow);
 
 test('等待聚焦期间列表重渲染后，动作重新定位到当前节点', async () => {
   let focusComplete;

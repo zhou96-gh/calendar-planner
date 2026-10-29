@@ -7,6 +7,8 @@ const VALID_WEEKEND_REST_PERIODS = new Set(['full', 'am', 'pm']);
 export const DEFAULT_SETTINGS = Object.freeze({
   anchorMonday: '2026-09-14',
   weekStartsOn: 6,
+  monthlyMaxAdjustmentDays: 4,
+  allowCrossMonthAdjustment: false,
   weekendRules: {
     5: { restPeriod: 'full', repeatIntervalWeeks: 1 },
     6: { restPeriod: 'full', repeatIntervalWeeks: 0 }
@@ -760,6 +762,10 @@ export function sanitizeSettings(input) {
     && settings.weekStartsOn >= 0
     && settings.weekStartsOn <= 6;
   const weekStartsOn = hasValidWeekStart ? settings.weekStartsOn : DEFAULT_SETTINGS.weekStartsOn;
+  const maximum = settings.monthlyMaxAdjustmentDays;
+  const hasValidMaximum = Number.isFinite(maximum) && maximum >= 0 && maximum <= 31
+    && Number.isInteger(maximum * 2);
+
   const normalizeWeekendRule = (weekday) => {
     const rule = input?.weekendRules?.[weekday];
     const hasValidPeriod = VALID_WEEKEND_REST_PERIODS.has(rule?.restPeriod) || rule?.restPeriod === 'none';
@@ -799,6 +805,8 @@ export function sanitizeSettings(input) {
   return {
     anchorMonday: isDateKey(settings.anchorMonday) ? startOfWeek(settings.anchorMonday) : DEFAULT_SETTINGS.anchorMonday,
     weekStartsOn,
+    monthlyMaxAdjustmentDays: hasValidMaximum ? maximum : DEFAULT_SETTINGS.monthlyMaxAdjustmentDays,
+    allowCrossMonthAdjustment: settings.allowCrossMonthAdjustment === true,
     weekendRules: {
       5: normalizeWeekendRule(5),
       6: normalizeWeekendRule(6)

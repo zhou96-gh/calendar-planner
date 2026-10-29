@@ -944,6 +944,136 @@ const testFailedResetKeepsQuotaSource = async () => {
 
 test('精确重置失败后保留既有额度来源，后续年份仍可沿用最近已发布年度', testFailedResetKeepsQuotaSource);
 
+const testRetryFailedPreloadOnNavigation = async () => {
+  const memory = createMemoryStorage();
+  const calls = [];
+  let failed = true;
+  const fetchYear = async (year) => {
+    calls.push(year);
+
+    if (year !== 2027 || failed) throw new Error('模拟临时网络错误');
+
+    return { '2027-01-01': { kind: 'legal', name: '元旦' } };
+  };
+
+  const app = createPersistenceHarness(memory.storage, false, fetchYear);
+  app.renderView();
+  await app.ensureHolidayData(2027);
+  failed = false;
+  app.setViewYear(2027);
+  app.renderView('navigation');
+  await app.ensureHolidayData(2027);
+  const requested = calls.filter((year) => year === 2027);
+  const state = app.getState();
+  assert.equal(requested.length, 2);
+  assert.equal(state.holidays['2027-01-01'].name, '元旦');
+  assert.ok(state.loadedYears.includes(2027));
+};
+
+const testFailedNavigationDoesNotLoop = async () => {
+  const memory = createMemoryStorage();
+  const calls = [];
+  const fetchYear = async (year) => {
+    calls.push(year);
+    throw new Error('模拟持续网络错误');
+  };
+
+  const app = createPersistenceHarness(memory.storage, false, fetchYear);
+  app.renderView();
+  await app.ensureHolidayData(2027);
+  app.setViewYear(2027);
+  app.renderView('navigation');
+  await app.ensureHolidayData(2027);
+  app.renderView('navigation');
+  await app.ensureHolidayData(2027);
+  const requested = calls.filter((year) => year === 2027);
+  assert.equal(requested.length, 2);
+  assert.equal(memory.writes.length, 0);
+};
+
+const testNavigationSharesPendingReference = async () => {
+  const memory = createMemoryStorage();
+  const calls = [];
+  const preparations = [];
+  const fetchYear = async (year) => {
+    calls.push(year);
+    throw new HolidayDataUnavailableError(year);
+  };
+
+  const app = createPersistenceHarness(memory.storage, false, fetchYear);
+  let begin;
+  let finish;
+  const started = new Promise((resolve) => { begin = resolve; });
+  const pending = new Promise((resolve) => { finish = resolve; });
+  const ready = Promise.resolve();
+
+  app.setPreparation((year) => {
+    preparations.push(year);
+
+    if (year === 2027) begin();
+
+    return year === 2027 ? pending : ready;
+  });
+
+  app.renderView();
+  await started;
+  app.setViewYear(2027);
+  app.renderView('navigation');
+  finish();
+  await app.ensureHolidayData(2027);
+  app.setViewYear(2026);
+  app.renderView('navigation');
+  app.setViewYear(2027);
+  app.renderView('navigation');
+  await app.ensureHolidayData(2027);
+  const requested = calls.filter((year) => year === 2027);
+  const prepared = preparations.filter((year) => year === 2027);
+  const sourceYear = app.getQuotaSources().get(2027);
+  assert.equal(requested.length, 1);
+  assert.equal(prepared.length, 1);
+  assert.equal(sourceYear, 2026);
+  assert.equal(memory.writes.length, 0);
+};
+
+const testRetryReferenceChainOnNavigation = async () => {
+  for (const recovered of [true, false]) {
+    const memory = createMemoryStorage();
+    const calls = [];
+    let preloading = true;
+    const fetchYear = async (year) => {
+      calls.push(year);
+
+      if (year === 2027 && (preloading || !recovered)) throw new Error('模拟参考年份临时失败');
+
+      throw new HolidayDataUnavailableError(year);
+    };
+
+    const app = createPersistenceHarness(memory.storage, false, fetchYear);
+    app.renderView();
+    await app.ensureHolidayData(2027);
+    preloading = false;
+    app.setViewYear(2028);
+    app.renderView('navigation');
+    await app.ensureHolidayData(2028);
+    app.renderView('navigation');
+    await app.ensureHolidayData(2028);
+    const retried = calls.filter((year) => year === 2027);
+    const sources = app.getQuotaSources();
+    assert.equal(retried.length, 2);
+    const sourceYear = sources.get(2028);
+    const expectedSource = recovered ? 2026 : undefined;
+    const hasReference = sources.has(2028);
+    assert.equal(sourceYear, expectedSource);
+    assert.equal(hasReference, recovered);
+    assert.equal(memory.writes.length, 0);
+  }
+};
+
+test('失败的后台预加载在切入该年份时重新获取，成功后恢复年度安排', testRetryFailedPreloadOnNavigation);
+test('切年重试再次失败后同年重绘不会自动循环请求', testFailedNavigationDoesNotLoop);
+test('切年复用正在准备及已完成的参考假期，不重开预加载或重复全年准备', testNavigationSharesPendingReference);
+test('跳过失败年份切至远年时参考链也按需重试，再次失败不会循环', testRetryReferenceChainOnNavigation);
+
 const testBrowserStorage = () => {
   const memory = createMemoryStorage();
   const storage = {

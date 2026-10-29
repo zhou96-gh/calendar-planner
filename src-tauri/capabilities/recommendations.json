@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "recommendation-window",
+  "description": "休假推荐窗口仅通过事件与主窗口交换视图及操作",
+  "windows": ["vacation-recommendations"],
+  "permissions": ["core:default"]
+}

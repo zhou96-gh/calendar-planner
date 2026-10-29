@@ -1,6 +1,6 @@
 [package]
 name = "desktop-calendar-todo"
-version = "2.0.20"
+version = "2.0.21"
 description = "Windows desktop calendar and todo widget"
 authors = ["Desktop Calendar Todo"]
 edition = "2021"

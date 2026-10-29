@@ -16,6 +16,7 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 mod attachment;
+mod recommendation;
 
 const DATABASE_FILE: &str = "calendar-planner.db";
 static DATABASE_RECOVERY_NOTICE: Mutex<Option<String>> = Mutex::new(None);
@@ -33,6 +34,8 @@ const RECOVERY_TABLES: &[(&str, &[&str])] = &[
         "font_size_offset",
         "theme",
         "layout_density",
+        "monthly_max_adjustment_days",
+        "allow_cross_month_adjustment",
     ]),
     ("palette_colors", &["mode", "token", "color"]),
     ("palette_scheme_selection", &["id", "scheme_id"]),
@@ -97,7 +100,9 @@ CREATE TABLE IF NOT EXISTS settings (
     brightness INTEGER NOT NULL CHECK (brightness BETWEEN 70 AND 130),
     font_size_offset INTEGER NOT NULL CHECK (font_size_offset BETWEEN 0 AND 3),
     theme TEXT NOT NULL CHECK (theme IN ('system', 'dark', 'light')),
-    layout_density TEXT NOT NULL DEFAULT 'spacious' CHECK (layout_density IN ('compact', 'spacious'))
+    layout_density TEXT NOT NULL DEFAULT 'spacious' CHECK (layout_density IN ('compact', 'spacious')),
+    monthly_max_adjustment_days REAL NOT NULL DEFAULT 4 CHECK (monthly_max_adjustment_days BETWEEN 0 AND 31 AND monthly_max_adjustment_days * 2 = CAST(monthly_max_adjustment_days * 2 AS INTEGER)),
+    allow_cross_month_adjustment INTEGER NOT NULL DEFAULT 0 CHECK (allow_cross_month_adjustment IN (0, 1))
 );
 CREATE TABLE IF NOT EXISTS palette_colors (
     mode TEXT NOT NULL CHECK (mode IN ('light', 'dark')),
@@ -370,6 +375,16 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
         }
 
+        if table == "settings" && !columns.iter().any(|column| column == "monthly_max_adjustment_days") {
+            connection.execute_batch("ALTER TABLE settings ADD COLUMN monthly_max_adjustment_days REAL NOT NULL DEFAULT 4 CHECK (monthly_max_adjustment_days BETWEEN 0 AND 31 AND monthly_max_adjustment_days * 2 = CAST(monthly_max_adjustment_days * 2 AS INTEGER));")
+                .map_err(|error| error.to_string())?;
+        }
+
+        if table == "settings" && !columns.iter().any(|column| column == "allow_cross_month_adjustment") {
+            connection.execute_batch("ALTER TABLE settings ADD COLUMN allow_cross_month_adjustment INTEGER NOT NULL DEFAULT 0 CHECK (allow_cross_month_adjustment IN (0, 1));")
+                .map_err(|error| error.to_string())?;
+        }
+
         if table == "preferences" {
             if !columns.iter().any(|column| column == "window_width") {
                 connection.execute_batch("ALTER TABLE preferences ADD COLUMN window_width INTEGER CHECK (window_width IS NULL OR window_width > 0);")
@@ -572,7 +587,8 @@ fn load_settings_from_connection(connection: &Connection) -> Result<Option<Value
     let mut settings = connection.query_row(
         "SELECT anchor_monday, week_starts_on, saturday_rest_period, saturday_repeat_interval_weeks,
             sunday_rest_period, sunday_repeat_interval_weeks, background_transparency, brightness,
-            font_size_offset, theme, layout_density FROM settings WHERE id = 1",
+            font_size_offset, theme, layout_density, monthly_max_adjustment_days,
+            allow_cross_month_adjustment FROM settings WHERE id = 1",
         [],
         |row| Ok(json!({
             "anchorMonday": row.get::<_, String>(0)?,
@@ -585,7 +601,9 @@ fn load_settings_from_connection(connection: &Connection) -> Result<Option<Value
             "brightness": row.get::<_, i64>(7)?,
             "fontSizeOffset": row.get::<_, i64>(8)?,
             "theme": row.get::<_, String>(9)?,
-            "layoutDensity": row.get::<_, String>(10)?
+            "layoutDensity": row.get::<_, String>(10)?,
+            "monthlyMaxAdjustmentDays": row.get::<_, f64>(11)?,
+            "allowCrossMonthAdjustment": row.get::<_, bool>(12)?
         }))
     ).optional().map_err(|error| error.to_string())?;
     if let Some(ref mut settings) = settings {
@@ -688,6 +706,23 @@ fn save_state_to_connection(connection: &Connection, state: &Value) -> Result<()
         return Err("无效排版密度".into());
     }
 
+    let monthly_maximum = match settings.get("monthlyMaxAdjustmentDays") {
+        None => 4.0,
+        Some(value) => value.as_f64().ok_or("无效调休上限")?,
+    };
+
+    if !monthly_maximum.is_finite()
+        || !(0.0..=31.0).contains(&monthly_maximum)
+        || (monthly_maximum * 2.0).fract() != 0.0
+    {
+        return Err("无效调休上限".into());
+    }
+
+    let allow_cross_month = match settings.get("allowCrossMonthAdjustment") {
+        None => false,
+        Some(value) => value.as_bool().ok_or("无效跨月调休设置")?,
+    };
+
     let scheme = required_string(settings, "paletteScheme")?;
     let scheme_name = scheme.strip_suffix(".json").unwrap_or(scheme);
 
@@ -768,13 +803,16 @@ fn save_state_to_connection(connection: &Connection, state: &Value) -> Result<()
             font_size,
             theme,
             layout_density,
+            monthly_maximum,
+            allow_cross_month,
         ];
 
         transaction.execute(
             "INSERT INTO settings (id, anchor_monday, week_starts_on, saturday_rest_period,
                 saturday_repeat_interval_weeks, sunday_rest_period, sunday_repeat_interval_weeks,
-                background_transparency, brightness, font_size_offset, theme, layout_density)
-                VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                background_transparency, brightness, font_size_offset, theme, layout_density,
+                monthly_max_adjustment_days, allow_cross_month_adjustment)
+                VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                 ON CONFLICT(id) DO UPDATE SET
                     anchor_monday = excluded.anchor_monday,
                     week_starts_on = excluded.week_starts_on,
@@ -786,7 +824,9 @@ fn save_state_to_connection(connection: &Connection, state: &Value) -> Result<()
                     brightness = excluded.brightness,
                     font_size_offset = excluded.font_size_offset,
                     theme = excluded.theme,
-                    layout_density = excluded.layout_density",
+                    layout_density = excluded.layout_density,
+                    monthly_max_adjustment_days = excluded.monthly_max_adjustment_days,
+                    allow_cross_month_adjustment = excluded.allow_cross_month_adjustment",
             settings_parameters
         ).map_err(|error| error.to_string())?;
     }
@@ -1035,12 +1075,16 @@ pub fn run() {
             attachment::begin_attachment_drag,
             attachment::move_attachment_drag,
             attachment::finish_attachment_drag,
-            attachment::focus_calendar
+            attachment::focus_calendar,
+            recommendation::show_vacation_recommendations,
+            recommendation::hide_vacation_recommendations
         ])
         .on_window_event(|window, event| {
             if attachment::handle_event(window, event) { return; }
 
-            if let WindowEvent::CloseRequested { .. } = event {
+            if recommendation::handle_event(window, event) { return; }
+
+            if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
                 let _ = persist_current_window_size(window.app_handle());
                 window.app_handle().exit(0);
             }
@@ -1048,6 +1092,7 @@ pub fn run() {
         .setup(|app| {
             let preferences = load_preferences();
             attachment::setup(app, preferences.locked)?;
+            recommendation::setup(app)?;
             if let Some(window) = app.get_webview_window("main") {
                 if let Some((width, height)) = preferences.size {
                     window.set_size(PhysicalSize::new(width as u32, height as u32))?;
@@ -1167,6 +1212,7 @@ mod tests {
                 },
                 "backgroundTransparency": 100, "brightness": 100,
                 "fontSizeOffset": 1, "theme": "system", "layoutDensity": "compact", "paletteScheme": "default",
+                "monthlyMaxAdjustmentDays": 2.5, "allowCrossMonthAdjustment": true,
                 "palettes": default_palettes(), "customPalettes": default_palettes()
             },
             "todos": [{ "id": "todo-1", "date": "2026-09-15", "done": false, "text": "任务", "createdAt": 1 }],
@@ -1187,6 +1233,8 @@ mod tests {
         let stored = load_state_from_connection(&connection).unwrap().unwrap();
         assert_eq!(stored["settings"]["theme"], "system");
         assert_eq!(stored["settings"]["layoutDensity"], "compact");
+        assert_eq!(stored["settings"]["monthlyMaxAdjustmentDays"], 2.5);
+        assert_eq!(stored["settings"]["allowCrossMonthAdjustment"], true);
         assert_eq!(stored["settings"]["palettes"], state["settings"]["palettes"]);
         assert_eq!(stored["settings"]["backgroundTransparency"], 100);
         assert_eq!(stored["todos"], state["todos"]);
@@ -1304,6 +1352,12 @@ mod tests {
         let previous_schema = CREATE_SCHEMA_SQL.replace(
             ",\n    layout_density TEXT NOT NULL DEFAULT 'spacious' CHECK (layout_density IN ('compact', 'spacious'))",
             "",
+        ).replace(
+            ",\n    monthly_max_adjustment_days REAL NOT NULL DEFAULT 4 CHECK (monthly_max_adjustment_days BETWEEN 0 AND 31 AND monthly_max_adjustment_days * 2 = CAST(monthly_max_adjustment_days * 2 AS INTEGER))",
+            "",
+        ).replace(
+            ",\n    allow_cross_month_adjustment INTEGER NOT NULL DEFAULT 0 CHECK (allow_cross_month_adjustment IN (0, 1))",
+            "",
         );
         connection.execute_batch(&previous_schema).unwrap();
         connection.execute_batch(
@@ -1317,6 +1371,8 @@ mod tests {
 
         let settings = load_settings_from_connection(&connection).unwrap().unwrap();
         assert_eq!(settings["layoutDensity"], "spacious");
+        assert_eq!(settings["monthlyMaxAdjustmentDays"], 4.0);
+        assert_eq!(settings["allowCrossMonthAdjustment"], false);
         assert_eq!(settings["theme"], "dark");
         assert_eq!(settings["weekendRules"]["6"]["restPeriod"], "none");
         let text: String = connection.query_row("SELECT text FROM todos WHERE id = 'kept'", [], |row| row.get(0)).unwrap();
@@ -1369,6 +1425,21 @@ mod tests {
         });
         save_state_to_connection(&connection, &state).unwrap();
         let mut invalid_density = state.clone();
+        let mut expected_settings = state["settings"].clone();
+        expected_settings["monthlyMaxAdjustmentDays"] = json!(4.0);
+        expected_settings["allowCrossMonthAdjustment"] = json!(false);
+
+        for maximum in [json!(-1), json!(31.5), json!(0.1), json!(null), json!("4")] {
+            let mut invalid = state.clone();
+            invalid["settings"]["monthlyMaxAdjustmentDays"] = maximum;
+            assert!(save_state_to_connection(&connection, &invalid).is_err());
+        }
+
+        for allow in [json!(1), json!(null), json!("true")] {
+            let mut invalid = state.clone();
+            invalid["settings"]["allowCrossMonthAdjustment"] = allow;
+            assert!(save_state_to_connection(&connection, &invalid).is_err());
+        }
 
         for density in [json!("dense"), json!(null), json!(1)] {
             invalid_density["settings"]["layoutDensity"] = density;
@@ -1387,7 +1458,7 @@ mod tests {
         assert!(save_state_to_connection(&connection, &invalid).is_err());
         invalid["settings"]["palettes"]["light"]["stripe"] = json!("#aabbcc");
         assert!(save_state_to_connection(&connection, &invalid).is_err());
-        assert_eq!(load_state_from_connection(&connection).unwrap().unwrap()["settings"], state["settings"]);
+        assert_eq!(load_state_from_connection(&connection).unwrap().unwrap()["settings"], expected_settings);
     }
 
     #[test]

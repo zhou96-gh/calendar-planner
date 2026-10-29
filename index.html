@@ -307,6 +307,10 @@
             </section>
             <section id="weekend-settings" class="settings-group" role="tabpanel" aria-labelledby="weekend-settings-tab" tabindex="0" hidden>
               <h3>周末设置</h3>
+              <label class="field-label" for="monthly-max-adjustment-days">调休上限</label>
+              <input id="monthly-max-adjustment-days" type="number" min="0" max="31" step="0.5" value="4" required />
+              <label class="recommendation-checkbox" title="开启后允许调休与补班在相邻月份配对，优先同月"><input id="allow-cross-month-adjustment" type="checkbox" />跨月</label>
+              <p>休假推荐按本次新增调休总天数使用此上限，跨月合计，已有调班不扣本次额度；推荐窗口中可临时修改，免补班假期使用额外额度。“跨月”控制调休与补班的月份配对，关闭时每个月分别等量匹配。</p>
               <label class="field-label" for="week-starts-on">每周开始于</label>
               <select id="week-starts-on">
                 <option value="6">周日</option>
@@ -392,6 +396,43 @@
       <button id="settings-floating-back" class="settings-back-fab" type="button" title="返回日历" aria-label="返回日历" hidden>&larr;</button>
     </div>
 
+    <dialog id="vacation-recommendation-dialog" aria-labelledby="vacation-recommendation-title">
+      <div class="vacation-recommendation-content">
+        <div class="dialog-heading recommendation-heading">
+          <h2 id="vacation-recommendation-title">休假推荐</h2>
+          <button class="icon-button" type="button" data-recommendation-close title="关闭" aria-label="关闭">×</button>
+        </div>
+        <p id="vacation-recommendation-holiday"></p>
+        <div class="recommendation-controls">
+          <label class="recommendation-field" for="recommendation-maximum">
+            <span id="recommendation-maximum-label" class="field-label">调休上限</span>
+            <input id="recommendation-maximum" type="number" min="0" max="31" step="0.5" required />
+          </label>
+          <label class="recommendation-field" for="recommendation-leave-days">
+            <span class="field-label">假期天数</span>
+            <input id="recommendation-leave-days" type="number" min="0" step="0.5" value="0" required />
+          </label>
+          <label class="recommendation-field" for="recommendation-work-maximum">
+            <span class="field-label">连续上班上限</span>
+            <input id="recommendation-work-maximum" type="number" min="0.5" step="0.5" placeholder="不限（天）" />
+          </label>
+          <label class="recommendation-checkbox" title="开启后允许调休与补班在相邻月份配对，优先同月"><input id="recommendation-cross-month" type="checkbox" />跨月</label>
+        </div>
+        <p class="recommendation-help">仅本次有效，跨月合计。新增休假 = 调休 + 假期；补班 = 调休。跨月关：各月调休 = 各月补班；跨月开：同月优先 → 最近相邻月（仅一侧）。个人调班保留，法定假期不补班。</p>
+        <div id="vacation-recommendation-results" aria-live="polite"></div>
+        <details class="recommendation-display-guide">
+          <summary>显示说明</summary>
+          <ul>
+            <li><code>2027-02（1-6、8）</code>：2027 年 2 月 1 至 6 日及 8 日整天。</li>
+            <li><code>2027-02（4、5）上午</code>：2 月 4 日、5 日上午；下午同理。</li>
+            <li>休假：本方案的连续休息总天数。</li>
+            <li>调休：需补班的新增休假；假期：无需补班的额外休假；补班：新增上班天数。</li>
+            <li>连班：执行方案后的最长连续上班天数。</li>
+          </ul>
+        </details>
+      </div>
+    </dialog>
+
     <dialog id="adjustment-dialog">
       <form method="dialog" id="adjustment-form">
         <div class="dialog-heading">
@@ -420,6 +461,7 @@
           </div>
           <label class="field-label" for="adjustment-note">备注</label>
           <input id="adjustment-note" type="text" maxlength="30" placeholder="可选" />
+          <div id="recommendation-leave-preview" class="date-preview" hidden></div>
           <div id="adjustment-preview" class="date-preview"></div>
         </div>
         <template id="adjustment-range-template">

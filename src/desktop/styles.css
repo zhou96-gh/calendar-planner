@@ -21,6 +21,31 @@ html.platform-desktop::-webkit-scrollbar,
   filter: brightness(var(--desktop-brightness, 1));
 }
 
+html.desktop-recommendation,
+.desktop-recommendation body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.desktop-recommendation body { display: flex; flex-direction: column; }
+
+.desktop-recommendation #recommendation-window-content {
+  flex: 1;
+  min-height: 0;
+  padding: calc(16 * var(--layout-space));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#recommendation-window-error {
+  flex: none;
+  margin: 0 calc(16 * var(--layout-space)) calc(16 * var(--layout-space));
+  color: var(--error-strong);
+  font-size: 12px;
+}
+
 .platform-desktop .app-shell {
   width: 100%;
   min-width: 0;

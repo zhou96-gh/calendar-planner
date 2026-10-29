@@ -3,6 +3,10 @@ import { fetchHolidayYear, HolidayDataUnavailableError } from './holiday/fetch.j
 import { formatLunarDate, getFestivalNames } from './holiday/festivals.js';
 import { createQuotaHolidays, prepareQuotaHolidays } from './holiday/quota.js';
 import { COLOR_DEFAULTS, getPalette } from './holiday/appearance.js';
+import { getVacationAdjustmentLimit, hasCrossMonthCompensation, recommendVacations } from './holiday/recommendations.js';
+import {
+  getVacationRecordGroup, getVacationReplacementRecords, getVacationSelection
+} from './holiday/recommendation-selection.js';
 import {
   STORAGE_VERSION,
   CUSTOM_COLOR_TOKENS,
@@ -16,6 +20,7 @@ import {
 } from './holiday/storage.js';
 import {
   DEFAULT_SETTINGS,
+  addDays,
   buildMonthGrid,
   calculateAdjustmentDays,
   classifyDay,
@@ -89,6 +94,12 @@ let calendarHolidays = state.holidays;
 let renderedYear = null;
 let previewColors = null;
 let adjustmentSession = 0;
+let recommendationDateKey = '';
+let recommendationEndDate = '';
+let vacationRecommendations = [];
+let recommendationRequest = 0;
+let recommendationLeaveRanges = [];
+let recommendationSelection = null;
 
 const elements = {
   monthTitle: document.querySelector('#month-title'),
@@ -111,6 +122,16 @@ const elements = {
   weekdayHeader: document.querySelector('#weekday-header'),
   weekStartsOn: document.querySelector('#week-starts-on'),
   anchorMonday: document.querySelector('#anchor-monday'),
+  monthlyMaxAdjustmentDays: document.querySelector('#monthly-max-adjustment-days'),
+  allowCrossMonthAdjustment: document.querySelector('#allow-cross-month-adjustment'),
+  recommendationDialog: document.querySelector('#vacation-recommendation-dialog'),
+  recommendationHoliday: document.querySelector('#vacation-recommendation-holiday'),
+  recommendationMaximum: document.querySelector('#recommendation-maximum'),
+  recommendationMaximumLabel: document.querySelector('#recommendation-maximum-label'),
+  recommendationLeaveDays: document.querySelector('#recommendation-leave-days'),
+  recommendationWorkMaximum: document.querySelector('#recommendation-work-maximum'),
+  recommendationCrossMonth: document.querySelector('#recommendation-cross-month'),
+  recommendationResults: document.querySelector('#vacation-recommendation-results'),
   summaryRest: document.querySelector('#summary-rest'),
   summaryPure: document.querySelector('#summary-pure'),
   summarySchedule: document.querySelector('#summary-schedule'),
@@ -155,6 +176,7 @@ const elements = {
   correctionFields: document.querySelector('#correction-fields'),
   adjustmentNote: document.querySelector('#adjustment-note'),
   adjustmentPreview: document.querySelector('#adjustment-preview'),
+  recommendationLeavePreview: document.querySelector('#recommendation-leave-preview'),
   toast: document.querySelector('#toast')
 };
 
@@ -251,6 +273,7 @@ function commitState(update) {
       await persist(draft);
       globalThis.calendarPlatform.commitExtension?.();
       state = draft;
+      globalThis.calendarPlatform.refreshRecommendations?.();
       return true;
     } catch (error) {
       globalThis.calendarPlatform.restoreExtension?.(extension);
@@ -357,6 +380,14 @@ function buildCalendarHolidays(holidays) {
 }
 
 function render(scope = 'all') {
+  if (scope === 'navigation' && renderedYear !== viewYear) {
+    yearFetchStates.forEach((fetchState, year) => {
+      if (fetchState.status === 'error' && !fetchState.promise && !yearQuotaSources.has(year)) {
+        yearFetchStates.delete(year);
+      }
+    });
+  }
+
   calendarHolidays = buildCalendarHolidays(state.holidays);
   const calculation = createCalendarCalculation(state.settings, calendarHolidays, state.adjustments);
 
@@ -497,6 +528,8 @@ function renderSettings() {
   renderColorPreview();
   elements.weekStartsOn.value = String(state.settings.weekStartsOn);
   elements.anchorMonday.value = state.settings.anchorMonday;
+  elements.monthlyMaxAdjustmentDays.value = String(state.settings.monthlyMaxAdjustmentDays);
+  elements.allowCrossMonthAdjustment.checked = state.settings.allowCrossMonthAdjustment;
 
   document.querySelectorAll('.weekend-period-row[data-weekend-day]').forEach((row) => {
     const weekday = row.dataset.weekendDay;
@@ -760,10 +793,10 @@ function renderYearResult() {
   const expiredHolidays = breakdown.pure.filter((item) => item.dateKey < todayKey);
   elements.resultYear.textContent = viewYear;
   elements.yearPureCount.textContent = `${formatDays(sumItemDays(currentHolidays))} 天`;
-  renderHolidayList(elements.pureHolidayList, currentHolidays, '本年暂无可用放假');
+  renderHolidayList(elements.pureHolidayList, currentHolidays, '本年暂无可用放假', breakdown.pure);
   elements.expiredHolidaySection.hidden = expiredHolidays.length === 0;
   elements.expiredHolidayCount.textContent = `${formatDays(sumItemDays(expiredHolidays))} 天`;
-  renderHolidayList(elements.expiredHolidayList, expiredHolidays, '');
+  renderHolidayList(elements.expiredHolidayList, expiredHolidays, '', breakdown.pure);
   renderYearDataStatus();
 }
 
@@ -907,7 +940,7 @@ async function loadHolidayData(year, requestState) {
   }
 }
 
-function renderHolidayList(container, items, emptyText) {
+function renderHolidayList(container, items, emptyText, allItems = items) {
   container.replaceChildren();
   if (items.length === 0) {
     const empty = document.createElement('p');
@@ -932,6 +965,7 @@ function renderHolidayList(container, items, emptyText) {
     row.type = 'button';
     row.className = 'holiday-row';
     row.dataset.date = firstItem.dateKey;
+    row.dataset.holidayEndDate = sortedItems.at(-1).dateKey;
     const date = document.createElement('span');
     date.className = 'holiday-date';
     date.textContent = formatHolidayDates(sortedItems);
@@ -940,8 +974,378 @@ function renderHolidayList(container, items, emptyText) {
     const week = document.createElement('small');
     week.textContent = `${formatDays(sumItemDays(sortedItems))} 天`;
     row.append(date, holidayName, week);
+    const holidayDates = allItems.filter((item) => (item.name || '放假') === name).map((item) => item.dateKey).sort();
+    const holiday = { dateKey: holidayDates[0], endDate: holidayDates.at(-1) };
+    const selected = getVacationSelection(state.adjustments, holiday);
+
+    if (selected) {
+      const titles = { earliest: '最早放假', longest: '最长假期', 'shortest-work': '最短连续上班' };
+      const plan = document.createElement('small');
+      plan.className = 'holiday-recommendation';
+      plan.textContent = titles[selected.planId];
+      holidayName.append(plan);
+    }
+
     container.append(row);
   });
+}
+
+/**
+ * 推荐只使用弹窗局部参数；使用方案后仍由原调班表单确认保存。
+ */
+function openVacationRecommendations(dateKey, endDate) {
+  recommendationDateKey = dateKey;
+  recommendationEndDate = endDate;
+  const day = classifyDay(dateKey, state.settings, calendarHolidays, state.adjustments);
+  elements.recommendationHoliday.textContent = `${day.holiday?.name ?? '假期'} · ${dateKey}`;
+  elements.recommendationMaximum.value = String(state.settings.monthlyMaxAdjustmentDays);
+  elements.recommendationLeaveDays.value = '0';
+  elements.recommendationWorkMaximum.value = '';
+  elements.recommendationCrossMonth.checked = state.settings.allowCrossMonthAdjustment;
+  const holiday = { dateKey, endDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+
+  if (selected) {
+    let leaveDays = 0;
+
+    selected.records.forEach((record) => {
+      if (record.associationType === 'none') {
+        leaveDays += calculateAdjustmentDays(record, state.settings, calendarHolidays);
+      }
+    });
+
+    elements.recommendationLeaveDays.value = String(leaveDays);
+    const compensation = { records: selected.records, settings: state.settings, holidays: calendarHolidays };
+
+    if (hasCrossMonthCompensation(compensation)) {
+      elements.recommendationCrossMonth.checked = true;
+    }
+  }
+
+  if (globalThis.calendarPlatform?.openRecommendations) {
+    globalThis.calendarPlatform.openRecommendations().catch(reportRecommendationWindowError);
+  } else {
+    elements.recommendationDialog.showModal();
+  }
+
+  void prepareVacationRecommendations();
+}
+
+function reportRecommendationWindowError(error) {
+  const message = String(error.message || error);
+  showToast(message, true);
+}
+
+/**
+ * 跨年搜索复用年度加载；快速切换参数时丢弃过期结果。
+ */
+async function prepareVacationRecommendations() {
+  const request = ++recommendationRequest;
+  const year = Number(recommendationDateKey.slice(0, 4));
+  const month = Number(recommendationDateKey.slice(5, 7));
+  const years = [year];
+
+  if (month === 1) years.push(year - 1);
+
+  if (month === 12) years.push(year + 1);
+
+  elements.recommendationResults.textContent = '正在生成推荐…';
+  vacationRecommendations = [];
+  const holiday = { dateKey: recommendationDateKey, endDate: recommendationEndDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+  renderVacationSelection(selected);
+
+  try {
+    await Promise.all(years.map((value) => ensureHolidayData(value)));
+
+    if (request !== recommendationRequest
+      || !(elements.recommendationDialog.open || globalThis.calendarPlatform?.recommendationsOpen)) return;
+
+    calendarHolidays = buildCalendarHolidays(state.holidays);
+    renderVacationRecommendations();
+    const estimated = years.filter((value) => !state.loadedYears.includes(value));
+
+    if (estimated.length) {
+      const message = document.createElement('p');
+      message.className = 'recommendation-help';
+      message.textContent = `${estimated.join('、')} 年官方安排未载入，结果基于当前周末规则及可用推算数据。`;
+      elements.recommendationResults.prepend(message);
+    }
+  } catch (error) {
+    if (request !== recommendationRequest
+      || !(elements.recommendationDialog.open || globalThis.calendarPlatform?.recommendationsOpen)) return;
+
+    elements.recommendationResults.textContent = `生成失败：${error.message}`;
+    const current = getVacationSelection(state.adjustments, holiday);
+    renderVacationSelection(current);
+  }
+}
+
+function formatRecommendationRange(range) {
+  const startPeriod = range.startPeriod === 'am' ? '上午' : '下午';
+  const endPeriod = range.endPeriod === 'am' ? '上午' : '下午';
+  return `${range.startDate} ${startPeriod} — ${range.endDate} ${endPeriod}`;
+}
+
+/**
+ * 推荐日期统一按月份及整天、上午、下午汇总，时段放在日号列表之后。
+ */
+function createRecommendationDateList(ranges, label = '') {
+  const months = new Map();
+
+  ranges.forEach((range) => {
+    for (let dateKey = range.startDate; dateKey <= range.endDate; dateKey = addDays(dateKey, 1)) {
+      let period = '';
+
+      if (dateKey === range.startDate && range.startPeriod === 'pm') period = '下午';
+
+      if (dateKey === range.endDate && range.endPeriod === 'am') period = '上午';
+
+      const month = dateKey.slice(0, 7);
+      const periods = months.get(month) ?? new Map();
+      const dates = periods.get(period) ?? [];
+      dates.push(Number(dateKey.slice(8)));
+      periods.set(period, dates);
+      months.set(month, periods);
+    }
+  });
+
+  const list = document.createElement('ul');
+  list.className = 'recommendation-range-list';
+  const sortedMonths = [...months].sort(([left], [right]) => left.localeCompare(right));
+
+  sortedMonths.forEach(([month, periods]) => {
+    for (const period of ['', '上午', '下午']) {
+      const dates = periods.get(period);
+
+      if (!dates?.length) continue;
+
+      const sortedDates = dates.sort((left, right) => left - right);
+      const groups = [];
+
+      sortedDates.forEach((day) => {
+        const previous = groups.at(-1);
+
+        if (!period && previous && day === previous.end + 1) {
+          previous.end = day;
+        } else {
+          groups.push({ start: day, end: day });
+        }
+      });
+
+      const dayLabels = groups.map(({ start, end }) => {
+        if (start === end) return String(start);
+
+        return `${start}-${end}`;
+      }).join('、');
+
+      const item = document.createElement('li');
+      item.className = 'recommendation-date-label';
+      let text = `${month}（${dayLabels}）${period}`;
+
+      if (label) text = `${label} ${text}`;
+
+      item.textContent = text;
+      list.append(item);
+    }
+  });
+
+  return list;
+}
+
+function renderVacationSelection(selected) {
+  if (!selected) return;
+
+  const status = document.createElement('div');
+  status.className = 'recommendation-selection-status';
+  const title = selected.records.find((record) => record.id.endsWith('|m'))?.note ?? '休假方案';
+  const label = document.createElement('span');
+  label.textContent = `已采用：${title}。可选择下方方案更换，或取消本次方案。`;
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'secondary-button';
+  cancel.dataset.cancelRecommendation = selected.groupId;
+  cancel.textContent = '取消方案';
+  status.append(label, cancel);
+  elements.recommendationResults.prepend(status);
+}
+
+function renderVacationRecommendations() {
+  elements.recommendationResults.replaceChildren();
+  const holiday = { dateKey: recommendationDateKey, endDate: recommendationEndDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+  const selectedIds = new Set(selected?.records.map((record) => record.id) ?? []);
+  const adjustments = state.adjustments.filter((record) => !selectedIds.has(record.id));
+  const leaveDays = elements.recommendationLeaveDays.valueAsNumber;
+
+  if (!elements.recommendationLeaveDays.value || !elements.recommendationLeaveDays.checkValidity()
+    || !Number.isSafeInteger(leaveDays * 2)) {
+    elements.recommendationResults.textContent = '假期天数请输入非负数，以 0.5 天递增。';
+    vacationRecommendations = [];
+    renderVacationSelection(selected);
+    return;
+  }
+
+  let maximumWorkDays = Infinity;
+
+  if (elements.recommendationWorkMaximum.value) maximumWorkDays = elements.recommendationWorkMaximum.valueAsNumber;
+
+  if (!elements.recommendationWorkMaximum.checkValidity()
+    || maximumWorkDays !== Infinity && !Number.isSafeInteger(maximumWorkDays * 2)) {
+    elements.recommendationResults.textContent = '连续上班上限至少 0.5 天，以 0.5 天递增，留空表示不限。';
+    vacationRecommendations = [];
+    renderVacationSelection(selected);
+    return;
+  }
+
+  const context = {
+    dateKey: recommendationDateKey, holidayEndDate: recommendationEndDate,
+    settings: state.settings, holidays: calendarHolidays, adjustments, leaveDays, maximumWorkDays,
+    allowCrossMonth: elements.recommendationCrossMonth.checked
+  };
+
+  const limit = getVacationAdjustmentLimit(context);
+  elements.recommendationMaximum.max = String(limit);
+  elements.recommendationMaximumLabel.textContent = `调休上限（最多 ${formatDays(limit)} 天）`;
+
+  if (elements.recommendationMaximum.valueAsNumber > limit) elements.recommendationMaximum.value = String(limit);
+
+  if (!elements.recommendationMaximum.value || !elements.recommendationMaximum.checkValidity()) {
+    elements.recommendationResults.textContent = `调休天数请输入 0 至 ${formatDays(limit)} 天，支持半天。`;
+    vacationRecommendations = [];
+    renderVacationSelection(selected);
+    return;
+  }
+
+  vacationRecommendations = recommendVacations({
+    ...context, maximum: elements.recommendationMaximum.valueAsNumber
+  });
+
+  if (!vacationRecommendations.length) {
+    elements.recommendationResults.textContent = '当前范围没有可用方案，可调整上限或允许跨月。';
+    renderVacationSelection(selected);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'vacation-recommendation-table';
+  table.setAttribute('aria-label', '休假推荐方案');
+
+  const head = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+
+  ['方案', '休假', '调休', '补班', '统计', '操作'].forEach((label) => {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    headerRow.append(cell);
+  });
+
+  head.append(headerRow);
+  const body = document.createElement('tbody');
+  const displayedPlans = new Set();
+
+  vacationRecommendations.forEach((plan) => {
+    if (!plan.unavailable) {
+      const schedule = { vacation: plan.vacation, ranges: plan.ranges, leaveRanges: plan.leaveRanges };
+      const key = JSON.stringify(schedule);
+
+      if (displayedPlans.has(key)) return;
+
+      displayedPlans.add(key);
+    }
+
+    const row = document.createElement('tr');
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = plan.title;
+    row.append(heading);
+
+    if (plan.unavailable) {
+      const message = document.createElement('td');
+      message.colSpan = 5;
+      message.textContent = '当前调休额度、上班上限或已有调班下没有可用方案。';
+      row.append(message);
+      body.append(row);
+      return;
+    }
+
+    const vacation = document.createElement('td');
+    const vacationDates = createRecommendationDateList([plan.vacation]);
+    vacation.append(vacationDates);
+    const adjustment = document.createElement('td');
+    const restRanges = plan.ranges.filter((range) => range.type === 'rest');
+    const workRanges = plan.ranges.filter((range) => range.type === 'work');
+    const restDates = createRecommendationDateList(restRanges, '调休');
+    const leaveDates = createRecommendationDateList(plan.leaveRanges, '假期');
+    const makeup = document.createElement('td');
+    const workDates = createRecommendationDateList(workRanges);
+
+    const displayedRanges = [...plan.leaveRanges, ...plan.ranges];
+    adjustment.append(leaveDates, restDates);
+    makeup.append(workDates);
+    const statistics = document.createElement('td');
+    statistics.className = 'recommendation-statistics';
+    const statisticItems = document.createElement('div');
+    statisticItems.className = 'recommendation-statistic-items';
+    const workDaysLabel = `${plan.longestWorkDays} 天`;
+    const longestWork = Number.isFinite(plan.longestWorkDays) ? workDaysLabel : '无休息时段中断';
+    const statisticLabels = [
+      `休假 ${formatDays(plan.vacationDays)} 天`,
+      `调休 ${formatDays(plan.adjustmentDays)} 天`,
+      `补班 ${formatDays(plan.adjustmentDays)} 天`,
+      `连班 ${longestWork}`
+    ];
+
+    if (plan.leaveDays > 0) {
+      const leaveLabel = `假期 ${formatDays(plan.leaveDays)} 天`;
+      statisticLabels.splice(2, 0, leaveLabel);
+    }
+
+    statisticLabels.forEach((label) => {
+      const item = document.createElement('p');
+      item.className = 'recommendation-day-count';
+      item.textContent = label;
+      statisticItems.append(item);
+    });
+
+    statistics.append(statisticItems);
+    const action = document.createElement('td');
+
+    if (displayedRanges.length) {
+      const use = document.createElement('button');
+      use.type = 'button';
+      use.className = 'secondary-button';
+      use.dataset.useRecommendation = plan.id;
+      use.textContent = '应用';
+      action.append(use);
+    } else {
+      action.textContent = '-';
+    }
+
+    row.append(vacation, adjustment, makeup, statistics, action);
+    body.append(row);
+  });
+
+  table.append(head, body);
+  const help = document.createElement('p');
+  help.className = 'recommendation-help';
+  const requestedMaximum = formatDays(elements.recommendationMaximum.valueAsNumber);
+  const requestedLeave = formatDays(leaveDays);
+  let allowanceDescription = `调休 ≤ ${requestedMaximum} 天`;
+
+  if (leaveDays > 0) allowanceDescription += `；假期 ≤ ${requestedLeave} 天`;
+
+  if (Number.isFinite(maximumWorkDays)) {
+    const requestedWork = formatDays(maximumWorkDays);
+    allowanceDescription += `；连班 ≤ ${requestedWork} 天`;
+  } else {
+    allowanceDescription += '；连班不限';
+  }
+
+  help.textContent = `本次：${allowanceDescription}。整天优先，半天补班优先上午；休息 ≥ 0.5 天 ⇒ 连班中断。`;
+  elements.recommendationResults.append(table, help);
+  renderVacationSelection(selected);
 }
 
 function sumItemDays(items) {
@@ -968,6 +1372,8 @@ function appendRange(container, range = null) {
 
 function openAdjustmentDialog(type, record = null, dateKey = '', defaultPeriods = null) {
   adjustmentSession += 1;
+  recommendationLeaveRanges = record?.leaveRanges ?? [];
+  recommendationSelection = record?.recommendationSelection ?? null;
   selectedAdjustmentId = record?.id ?? '';
   editingAdjustmentId = selectedAdjustmentId;
   selectedAdjustmentDateKey = dateKey || getAdjustmentRanges(record)[0]?.startDate || toLocalDateKey(now);
@@ -1154,26 +1560,48 @@ function hasValidAdjustmentRange(range) {
     || range.endPeriod === 'pm';
 }
 
-function getAdjustmentValidation(record) {
+function getAdjustmentValidation(record, leaveRanges = [], context = {}) {
+  const { selection = null, adjustments = state.adjustments } = context;
+  let records;
+
+  try {
+    records = getVacationReplacementRecords(adjustments, selection);
+  } catch (error) {
+    return error.message;
+  }
+
   if (record.ranges.length === 0) {
     return '至少添加一个调休或补班日期';
   }
-  if (record.ranges.some((range) => !hasValidAdjustmentRange(range))) {
+  const allRanges = [...record.ranges, ...leaveRanges];
+
+  if (allRanges.some((range) => !hasValidAdjustmentRange(range))) {
     return '结束时间不能早于开始时间，且每个范围都需填日期';
   }
 
-  const currentRecords = [record];
+  const combined = { ...record, ranges: allRanges };
+  const currentRecords = [combined];
 
-  if (hasAdjustmentOverlap(record, currentRecords, state.settings, calendarHolidays)) {
+  if (hasAdjustmentOverlap(combined, currentRecords, state.settings, calendarHolidays)) {
     return '本次调班有重复的半天';
   }
 
+  if (selection && hasAdjustmentOverlap(combined, records, state.settings, calendarHolidays)) {
+    return '推荐日期包含其他调班，请重新生成方案';
+  }
+
   if (record.associationType === 'none'
-    && hasAdjustmentOverlap(record, state.adjustments, state.settings, calendarHolidays)) {
+    && hasAdjustmentOverlap(record, records, state.settings, calendarHolidays)) {
     return '所选范围包含已调班时段';
   }
 
-  if (record.ranges.some((range) => calculateAdjustmentDays(range, state.settings, calendarHolidays) === 0)) {
+  const leaveRecord = { ...record, ranges: leaveRanges };
+
+  if (leaveRanges.length && hasAdjustmentOverlap(leaveRecord, records, state.settings, calendarHolidays)) {
+    return '免补班假期包含已调班时段';
+  }
+
+  if (allRanges.some((range) => calculateAdjustmentDays(range, state.settings, calendarHolidays) === 0)) {
     return '有日期范围不包含可调班的半天';
   }
 
@@ -1182,7 +1610,18 @@ function getAdjustmentValidation(record) {
 
 function updateAdjustmentPreview() {
   const record = getAdjustmentDraft();
-  const error = getAdjustmentValidation(record);
+  const context = { selection: recommendationSelection };
+  const error = getAdjustmentValidation(record, recommendationLeaveRanges, context);
+  const replacing = Boolean(recommendationSelection?.previousRecords.length);
+  elements.recommendationLeavePreview.hidden = !recommendationLeaveRanges.length && !replacing;
+  const leaveLabels = recommendationLeaveRanges.map((range) => formatRecommendationRange(range));
+  const replacementNote = replacing ? '保存后替换原推荐方案；关闭不保存则保留原方案。' : '';
+  let leaveNote = '';
+
+  if (leaveLabels.length) leaveNote = `假期（无需补班，将一并保存）：${leaveLabels.join('；')}`;
+
+  elements.recommendationLeavePreview.textContent = replacementNote + leaveNote;
+
   if (error) {
     elements.adjustmentPreview.textContent = error;
     elements.adjustmentPreview.classList.add('invalid');
@@ -1197,7 +1636,10 @@ function updateAdjustmentPreview() {
 
 async function saveAdjustmentRecord() {
   const draft = getAdjustmentDraft();
-  const error = getAdjustmentValidation(draft);
+  const leaveRanges = structuredClone(recommendationLeaveRanges);
+  const selection = structuredClone(recommendationSelection);
+  const context = { selection };
+  const error = getAdjustmentValidation(draft, leaveRanges, context);
   if (error) {
     showToast(error, true);
     return false;
@@ -1205,7 +1647,8 @@ async function saveAdjustmentRecord() {
   const operationId = selectedAdjustmentId;
   const rangeType = activeAdjustmentRangeType;
   await commitState((next) => {
-    const validationError = getAdjustmentValidation(draft);
+    const validationContext = { selection, adjustments: next.adjustments };
+    const validationError = getAdjustmentValidation(draft, leaveRanges, validationContext);
 
     if (validationError) throw new Error(validationError);
 
@@ -1219,25 +1662,40 @@ async function saveAdjustmentRecord() {
       detached = { ...existing, id: createAdjustmentId(), associationType: 'none', ranges: detachedRanges };
     }
 
+    let recordId = operationId || createAdjustmentId();
+
+    if (selection) recordId = `${selection.groupId}|m`;
+
     const record = {
       ...draft,
-      id: operationId || createAdjustmentId(),
+      id: recordId,
       createdAt: existing?.createdAt ?? Date.now()
     };
 
-    const original = next.adjustments.filter((item) => item.id !== operationId);
+    const baseline = getVacationReplacementRecords(next.adjustments, selection);
+    const original = baseline.filter((item) => item.id !== operationId);
     let reconciliation = { mergedIds: [], remaining: [] };
 
-    if (record.associationType === 'required') {
+    if (record.associationType === 'required' && !selection) {
       reconciliation = mergeAssociatedAdjustment(record, original, next.settings, calendarHolidays);
     }
 
     const remaining = reconciliation.remaining.map((item) => ({ ...item, id: createAdjustmentId() }));
     const detachedRecords = detached ? [detached] : [];
+    const leaveRecords = [];
+
+    if (leaveRanges.length) {
+      let leaveId = createAdjustmentId();
+
+      if (selection) leaveId = `${selection.groupId}|l`;
+
+      leaveRecords.push({ id: leaveId, associationType: 'none', ranges: leaveRanges,
+        note: '假期（无需补班）', createdAt: record.createdAt });
+    }
 
     next.adjustments = sanitizeAdjustmentRecords([
       ...original.filter((item) => !reconciliation.mergedIds.includes(item.id)),
-      ...remaining, ...detachedRecords, record
+      ...remaining, ...detachedRecords, record, ...leaveRecords
     ]);
   });
 
@@ -1248,6 +1706,26 @@ async function saveAdjustmentRecord() {
 
 function createAdjustmentId() {
   return window.crypto?.randomUUID?.() ?? `adjustment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 只撤回本假期已采用方案，调休、补班及免补班假期在同次提交中移除。
+ */
+async function cancelVacationRecommendation(groupId) {
+  const holiday = { dateKey: recommendationDateKey, endDate: recommendationEndDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+
+  if (!selected || selected.groupId !== groupId) return false;
+
+  const selection = { ...holiday, previousRecords: structuredClone(selected.records) };
+  await commitState((next) => {
+    next.adjustments = getVacationReplacementRecords(next.adjustments, selection);
+  });
+
+  render();
+  renderVacationRecommendations();
+  showToast('推荐方案已取消');
+  return true;
 }
 
 function initializeDateCorrection(dateKey) {
@@ -1627,9 +2105,15 @@ listenForSave(elements.calendarView, 'click', async (event) => {
   const deleteButton = event.target.closest('[data-delete-adjustment-id]');
   if (deleteButton) {
     const record = state.adjustments.find((item) => item.id === deleteButton.dataset.deleteAdjustmentId);
-    if (record && window.confirm('这会删除整次调班中的全部调休与补班日期，继续吗？')) {
+    const groupId = getVacationRecordGroup(record?.id ?? '');
+    let message = '这会删除整次调班中的全部调休与补班日期，继续吗？';
+
+    if (groupId) message = '这会取消整个推荐方案，包括调休、补班及免补班假期，继续吗？';
+
+    if (record && window.confirm(message)) {
       await commitState((draft) => {
-        draft.adjustments = draft.adjustments.filter((item) => item.id !== record.id);
+        draft.adjustments = draft.adjustments.filter((item) => item.id !== record.id
+          && (!groupId || getVacationRecordGroup(item.id) !== groupId));
       });
 
       render();
@@ -1654,8 +2138,7 @@ listenForSave(elements.calendarView, 'click', async (event) => {
     viewYear = year;
     viewMonth = month;
     render('navigation');
-    const defaults = getDefaultAdjustmentForDate(row.dataset.date);
-    openAdjustmentDialog(defaults.type, null, row.dataset.date, defaults.periods);
+    openVacationRecommendations(row.dataset.date, row.dataset.holidayEndDate);
   }
 });
 
@@ -1675,6 +2158,81 @@ listenForSave(elements.weekStartsOn, 'change', async () => {
   await commitState((draft) => { draft.settings.weekStartsOn = weekStartsOn; });
   render();
 });
+
+const saveMonthlyMaximum = async () => {
+  if (!elements.monthlyMaxAdjustmentDays.value || !elements.monthlyMaxAdjustmentDays.reportValidity()) return;
+
+  const maximum = elements.monthlyMaxAdjustmentDays.valueAsNumber;
+  await commitState((draft) => { draft.settings.monthlyMaxAdjustmentDays = maximum; });
+  render();
+};
+
+listenForSave(elements.monthlyMaxAdjustmentDays, 'change', saveMonthlyMaximum);
+
+const saveCrossMonthSetting = async () => {
+  const allow = elements.allowCrossMonthAdjustment.checked;
+  await commitState((draft) => { draft.settings.allowCrossMonthAdjustment = allow; });
+  render();
+};
+
+listenForSave(elements.allowCrossMonthAdjustment, 'change', saveCrossMonthSetting);
+
+elements.recommendationMaximum.addEventListener('input', prepareVacationRecommendations);
+elements.recommendationLeaveDays.addEventListener('input', prepareVacationRecommendations);
+elements.recommendationWorkMaximum.addEventListener('input', prepareVacationRecommendations);
+elements.recommendationCrossMonth.addEventListener('change', prepareVacationRecommendations);
+
+const useVacationRecommendation = (event) => {
+  if (event.target.closest('[data-recommendation-close]')) elements.recommendationDialog.close();
+
+  const use = event.target.closest('[data-use-recommendation]');
+
+  if (!use) return;
+
+  // 采用前重新计算，避免其他窗口提交调班后使用过期方案。
+  renderVacationRecommendations();
+  const plan = vacationRecommendations.find((item) => item.id === use.dataset.useRecommendation);
+
+  if (!plan || plan.unavailable || !plan.ranges.length && !plan.leaveRanges.length) return;
+
+  const record = { ranges: plan.ranges, leaveRanges: plan.leaveRanges, associationType: 'required', note: plan.title };
+  const holiday = { dateKey: recommendationDateKey, endDate: recommendationEndDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+  const token = createAdjustmentId();
+  const groupId = `rec|${holiday.dateKey}|${holiday.endDate}|${plan.id}|${token}`;
+  record.recommendationSelection = { ...holiday, groupId,
+    previousRecords: structuredClone(selected?.records ?? []) };
+
+  if (!plan.ranges.length) {
+    record.ranges = plan.leaveRanges;
+    record.leaveRanges = [];
+    record.associationType = 'none';
+  }
+
+  if (globalThis.calendarPlatform?.closeRecommendations) {
+    globalThis.calendarPlatform.closeRecommendations().catch(reportRecommendationWindowError);
+  }
+
+  elements.recommendationDialog.close();
+  openAdjustmentDialog('rest', record, recommendationDateKey);
+};
+
+elements.recommendationDialog.addEventListener('click', useVacationRecommendation);
+
+const cancelSelectedVacation = async (event) => {
+  const cancel = event.target.closest('[data-cancel-recommendation]');
+
+  if (!cancel) return;
+
+  const holiday = { dateKey: recommendationDateKey, endDate: recommendationEndDate };
+  const selected = getVacationSelection(state.adjustments, holiday);
+
+  if (selected?.groupId === cancel.dataset.cancelRecommendation) {
+    await cancelVacationRecommendation(selected.groupId);
+  }
+};
+
+listenForSave(elements.recommendationDialog, 'click', cancelSelectedVacation);
 
 listenForSave(elements.appearanceMode, 'click', async (event) => {
   const button = event.target.closest('button[data-value]');
@@ -1998,6 +2556,9 @@ const application = {
   getState: () => encodeState(state),
   getSelectedDate: () => activeDateKey,
   notify: showToast,
+  whenIdle: () => stateCommitQueue,
+  refreshRecommendations: prepareVacationRecommendations,
+  cancelRecommendation: cancelVacationRecommendation,
   render,
   commit: async (update) => {
     await commitState(update);

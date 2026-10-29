@@ -63,6 +63,6 @@ npm run build:web
 npm run build:windows
 ```
 
-uTools 独立安装目录为 `dist/utools/`；Windows 桌面前端为 `web-dist/`，绿色版输出到 `dist/windows/`。Windows 构建脚本把共享代码和原生壳复制到 Windows 临时目录，使用已安装的 Rust MSVC、C++ Build Tools 和 npm 缓存离线构建。不要直接打包项目根目录或从 WSL UNC 编译。
+uTools 独立安装目录为 `dist/utools/`，直接交付目录，不压缩；Windows 桌面前端为 `web-dist/`，绿色版输出到 `dist/windows/`。不在 `dist` 根目录额外放包。Windows 构建脚本把共享代码和原生壳复制到 Windows 临时目录，使用已安装的 Rust MSVC、C++ Build Tools 和 npm 缓存离线构建。不要直接打包项目根目录或从 WSL UNC 编译。
 
 日常修改继续构建桌面前端和 uTools 插件；Windows 绿色包只在明确要求时生成。
