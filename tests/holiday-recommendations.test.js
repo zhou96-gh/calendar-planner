@@ -24,6 +24,79 @@ function fixture(overrides = {}) {
     adjustments: [], maximum: 4, ...overrides };
 }
 
+const testCustomStart = () => {
+  const options = fixture({ dateKey: '2027-02-05', holidayEndDate: '2027-02-10', maximum: 0, leaveDays: 7,
+    holidays: createQuotaHolidays(2027, 2026, settings) });
+
+  const original = recommendVacations(options);
+  const configured = { ...options, startDate: '2027-02-01' };
+  const plans = recommendVacations(configured);
+  const originalStrategies = plans.slice(0, 3);
+  assert.deepEqual(originalStrategies, original);
+  assert.equal(plans.length, 4);
+  const plan = plans[3];
+  assert.equal(plan.id, 'custom-start');
+  assert.equal(plan.vacation.startDate, configured.startDate);
+  assert.equal(plan.vacation.startPeriod, 'am');
+  assert.equal(plan.adjustmentDays, 0);
+  assert.ok(plan.leaveDays <= 7);
+  let used = 0;
+  let expectedEnd = '';
+
+  // 不调用推荐候选逻辑，按实际工作缺口独立核对免补班额度能延伸到的最远日期。
+  for (let date = configured.startDate; date <= '2027-03-31'; date = addDays(date, 1)) {
+    const day = classifyDay(date, settings, options.holidays);
+    const needed = Number(!day.periods.am.isRest) / 2 + Number(!day.periods.pm.isRest) / 2;
+
+    if (used + needed > options.leaveDays) break;
+
+    used += needed;
+    expectedEnd = date;
+  }
+
+  assert.equal(plan.vacation.endDate, expectedEnd);
+  assert.equal(plan.vacation.endPeriod, 'pm');
+  const cleared = { ...configured, startDate: '' };
+  const clearedPlans = recommendVacations(cleared);
+  assert.deepEqual(clearedPlans, original);
+};
+
+const testCustomStartConstraints = () => {
+  const options = fixture({ maximum: 1, startDate: '2026-09-30' });
+  const plans = recommendVacations(options);
+  const plan = plans[3];
+  assert.equal(plan.vacation.startDate, options.startDate);
+  assert.ok(plan.adjustmentDays <= 1);
+  assertWorkMonthScope(options, plan);
+  const blockedRange = range('work', '2026-10-10');
+  const blocked = { ...options, startDate: '2026-10-10', adjustments: [record([blockedRange])] };
+  const blockedPlans = recommendVacations(blocked);
+  assert.equal(blockedPlans[3].unavailable, true);
+  const noQuota = fixture({ maximum: 0, startDate: '2026-10-20' });
+  const noQuotaPlans = recommendVacations(noQuota);
+  assert.equal(noQuotaPlans[3].unavailable, true);
+  const afterHoliday = { ...noQuota, leaveDays: 2 };
+  const later = recommendVacations(afterHoliday)[3];
+  assert.equal(later.vacation.startDate, '2026-10-20');
+  assert.equal(later.vacation.endDate, '2026-10-21');
+
+  for (const startDate of ['invalid', '2026-02-30', '2028-01-01']) {
+    const invalid = fixture({ startDate });
+    const results = recommendVacations(invalid);
+    assert.equal(results[3].unavailable, true);
+    const original = recommendVacations(fixture());
+    const originalStrategies = results.slice(0, 3);
+    assert.deepEqual(originalStrategies, original);
+  }
+
+  const limited = { ...options, maximumWorkDays: 0.5 };
+  const limitedPlans = recommendVacations(limited);
+  assert.equal(limitedPlans[3].unavailable, true);
+};
+
+test('开始日期额外生成第四种最长连休方案，原三种不变，清空恢复且春节七天额度独立核对', testCustomStart);
+test('指定开始方案保护已有调班，遵守额度、补班月份及上班上限，拒绝无效或超出范围日期', testCustomStartConstraints);
+
 function record(ranges) {
   return { id: 'existing', associationType: 'required', note: '', createdAt: 1, ranges };
 }

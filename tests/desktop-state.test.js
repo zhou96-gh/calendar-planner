@@ -79,6 +79,26 @@ const testLegacyImport = () => {
   assert.throws(implicitImport, /不支持的桌面/);
 };
 
+const testRecommendationOptionsRoundTrip = () => {
+  const calendar = calendarFixture();
+  const options = { maximum: 2.5, leaveDays: 3, maximumWorkDays: 6.5,
+    allowCrossMonth: true, startDate: '2027-02-01' };
+  calendar.adjustments[0].recommendationOptions = options;
+  const desktop = sanitizeDesktop();
+  const schemes = new Map();
+  const native = encodeDesktopState(calendar, desktop, schemes);
+  const restored = decodeDesktopState(native);
+  assert.deepEqual(restored.calendar.adjustments[0].recommendationOptions, options);
+  const reloaded = decodeState(restored.calendar);
+  assert.deepEqual(reloaded.adjustments[0].recommendationOptions, options);
+  options.maximumWorkDays = null;
+  const unlimited = encodeDesktopState(calendar, desktop, schemes);
+  const unlimitedRestored = decodeDesktopState(unlimited);
+  assert.deepEqual(unlimitedRestored.calendar.adjustments[0].recommendationOptions, options);
+};
+
+test('方案临时配置在公共存储及桌面完整备份往返后保留，支持连续上班不限', testRecommendationOptionsRoundTrip);
+
 test('旧桌面备份仅显式导入时按内置与删除标记还原，方案标识转换到公共格式', testLegacyImport);
 
 const testInvalidContainers = () => {
@@ -96,6 +116,9 @@ const testInvalidContainers = () => {
     (value) => { value.holidayOverrides['2027-99-99'] = null; },
     (value) => { value.holidayOverrides['2027-01-01'] = { kind: 'invalid' }; },
     (value) => { value.adjustments[0].counterRanges[0].startPeriod = 'invalid'; },
+    (value) => { value.adjustments[0].recommendationOptions = {
+      maximum: -1, leaveDays: 0, maximumWorkDays: null, allowCrossMonth: false
+    }; },
     (value) => { value.adjustments.push(structuredClone(value.adjustments[0])); }
   ];
 

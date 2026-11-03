@@ -309,6 +309,32 @@ function mergeContiguousAdjustmentRanges(ranges) {
   return merged.sort((left, right) => left.index - right.index).map(({ range }) => range);
 }
 
+/**
+ * 推荐配置随方案保存；旧记录没有配置时保留原有回填方式。
+ */
+export function sanitizeRecommendationOptions(value) {
+  if (!value || typeof value !== 'object'
+    || !Number.isFinite(value.maximum) || value.maximum < 0 || value.maximum > 31
+    || !Number.isInteger(value.maximum * 2)
+    || !Number.isFinite(value.leaveDays) || value.leaveDays < 0 || !Number.isInteger(value.leaveDays * 2)
+    || value.maximumWorkDays !== null && (!Number.isFinite(value.maximumWorkDays)
+      || value.maximumWorkDays < 0.5 || !Number.isInteger(value.maximumWorkDays * 2))
+    || typeof value.allowCrossMonth !== 'boolean') {
+    return null;
+  }
+
+  const startDate = value.startDate ?? '';
+
+  if (startDate !== '' && !isDateKey(startDate)) return null;
+
+  const options = { maximum: value.maximum, leaveDays: value.leaveDays,
+    maximumWorkDays: value.maximumWorkDays, allowCrossMonth: value.allowCrossMonth };
+
+  if (startDate) options.startDate = startDate;
+
+  return options;
+}
+
 export function sanitizeAdjustmentRecords(input) {
   if (!Array.isArray(input)) {
     return [];
@@ -337,13 +363,19 @@ export function sanitizeAdjustmentRecords(input) {
       return [];
     }
 
-    return [{
+    const recommendationOptions = sanitizeRecommendationOptions(record.recommendationOptions);
+
+    const normalized = {
       id: typeof record.id === 'string' && record.id ? record.id.slice(0, 80) : `imported-${index}`,
       associationType: record.associationType === 'required' ? 'required' : 'none',
       ranges: mergeContiguousAdjustmentRanges(ranges),
       note: typeof record.note === 'string' ? record.note.slice(0, 30) : '',
       createdAt: Number.isInteger(record.createdAt) && record.createdAt > 0 ? record.createdAt : index + 1
-    }];
+    };
+
+    if (recommendationOptions) normalized.recommendationOptions = recommendationOptions;
+
+    return [normalized];
   });
 }
 

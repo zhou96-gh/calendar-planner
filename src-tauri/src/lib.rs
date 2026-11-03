@@ -41,7 +41,11 @@ const RECOVERY_TABLES: &[(&str, &[&str])] = &[
     ("palette_scheme_selection", &["id", "scheme_id"]),
     ("custom_palette_colors", &["mode", "token", "color"]),
     ("todos", &["id", "date", "text", "done", "created_at"]),
-    ("adjustments", &["id", "type", "start_date", "start_period", "end_date", "end_period", "note", "compensation_required", "created_at"]),
+    ("adjustments", &[
+        "id", "type", "start_date", "start_period", "end_date", "end_period", "note",
+        "compensation_required", "created_at", "recommendation_maximum", "recommendation_leave_days",
+        "recommendation_work_maximum", "recommendation_cross_month", "recommendation_start_date",
+    ]),
     ("adjustment_counter_ranges", &["adjustment_id", "position", "type", "start_date", "start_period", "end_date", "end_period"]),
     ("holiday_cache_years", &["year"]),
     ("holiday_cache", &["year", "date", "kind", "name", "start_day", "end_day", "legal_days", "makeup_days"]),
@@ -137,7 +141,12 @@ CREATE TABLE IF NOT EXISTS adjustments (
     end_period TEXT NOT NULL CHECK (end_period IN ('am', 'pm')),
     note TEXT NOT NULL,
     compensation_required INTEGER NOT NULL CHECK (compensation_required IN (0, 1)),
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    recommendation_maximum REAL,
+    recommendation_leave_days REAL,
+    recommendation_work_maximum REAL,
+    recommendation_cross_month INTEGER CHECK (recommendation_cross_month IN (0, 1)),
+    recommendation_start_date TEXT
 );
 CREATE TABLE IF NOT EXISTS adjustment_counter_ranges (
     adjustment_id TEXT NOT NULL,
@@ -385,6 +394,21 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
         }
 
+        if table == "adjustments" {
+            for (field, definition) in [
+                ("recommendation_maximum", "REAL"),
+                ("recommendation_leave_days", "REAL"),
+                ("recommendation_work_maximum", "REAL"),
+                ("recommendation_cross_month", "INTEGER CHECK (recommendation_cross_month IN (0, 1))"),
+                ("recommendation_start_date", "TEXT"),
+            ] {
+                if !columns.iter().any(|column| column == field) {
+                    let sql = format!("ALTER TABLE adjustments ADD COLUMN {field} {definition};");
+                    connection.execute_batch(&sql).map_err(|error| error.to_string())?;
+                }
+            }
+        }
+
         if table == "preferences" {
             if !columns.iter().any(|column| column == "window_width") {
                 connection.execute_batch("ALTER TABLE preferences ADD COLUMN window_width INTEGER CHECK (window_width IS NULL OR window_width > 0);")
@@ -502,15 +526,36 @@ fn load_adjustments(connection: &Connection) -> Result<Vec<Value>, String> {
         let (id, range) = row.map_err(|error| error.to_string())?;
         counter_ranges.entry(id).or_default().push(range);
     }
-    let mut statement = connection.prepare("SELECT id, type, start_date, start_period, end_date, end_period, note, compensation_required, created_at FROM adjustments ORDER BY rowid")
+    let mut statement = connection.prepare("SELECT id, type, start_date, start_period, end_date, end_period, note, compensation_required, created_at,
+        recommendation_maximum, recommendation_leave_days, recommendation_work_maximum, recommendation_cross_month,
+        recommendation_start_date FROM adjustments ORDER BY rowid")
         .map_err(|error| error.to_string())?;
-    let records = statement.query_map([], |row| Ok(json!({
-        "id": row.get::<_, String>(0)?, "type": row.get::<_, String>(1)?,
-        "startDate": row.get::<_, String>(2)?, "startPeriod": row.get::<_, String>(3)?,
-        "endDate": row.get::<_, String>(4)?, "endPeriod": row.get::<_, String>(5)?,
-        "note": row.get::<_, String>(6)?, "compensationRequired": row.get::<_, i64>(7)? != 0,
-        "createdAt": row.get::<_, i64>(8)?
-    }))).map_err(|error| error.to_string())?;
+    let records = statement.query_map([], |row| {
+        let mut record = json!({
+            "id": row.get::<_, String>(0)?, "type": row.get::<_, String>(1)?,
+            "startDate": row.get::<_, String>(2)?, "startPeriod": row.get::<_, String>(3)?,
+            "endDate": row.get::<_, String>(4)?, "endPeriod": row.get::<_, String>(5)?,
+            "note": row.get::<_, String>(6)?, "compensationRequired": row.get::<_, i64>(7)? != 0,
+            "createdAt": row.get::<_, i64>(8)?
+        });
+        let maximum: Option<f64> = row.get(9)?;
+
+        if let Some(maximum) = maximum {
+            record["recommendationOptions"] = json!({
+                "maximum": maximum,
+                "leaveDays": row.get::<_, f64>(10)?,
+                "maximumWorkDays": row.get::<_, Option<f64>>(11)?,
+                "allowCrossMonth": row.get::<_, bool>(12)?
+            });
+            let start_date: Option<String> = row.get(13)?;
+
+            if let Some(start_date) = start_date {
+                record["recommendationOptions"]["startDate"] = json!(start_date);
+            }
+        }
+
+        Ok(record)
+    }).map_err(|error| error.to_string())?;
     records.map(|record| {
         let mut record = record.map_err(|error| error.to_string())?;
         let id = required_string(&record, "id")?.to_owned();
@@ -773,6 +818,34 @@ fn save_state_to_connection(connection: &Connection, state: &Value) -> Result<()
             required_string(range, "endPeriod")?;
         }
         required_integer(record, "createdAt")?;
+
+        if let Some(options) = record.get("recommendationOptions") {
+            let maximum = options["maximum"].as_f64().ok_or("无效推荐调休上限")?;
+            let leave = options["leaveDays"].as_f64().ok_or("无效推荐假期天数")?;
+
+            if !(0.0..=31.0).contains(&maximum) || (maximum * 2.0).fract() != 0.0
+                || leave < 0.0 || (leave * 2.0).fract() != 0.0 {
+                return Err("无效推荐额度".into());
+            }
+
+            match options.get("maximumWorkDays") {
+                Some(Value::Null) => {},
+                Some(value) if value.as_f64().is_some_and(|days| days >= 0.5 && (days * 2.0).fract() == 0.0) => {},
+                _ => return Err("无效推荐连续上班上限".into()),
+            }
+
+            options["allowCrossMonth"].as_bool().ok_or("无效推荐跨月配置")?;
+
+            if let Some(start_date) = options.get("startDate") {
+                let date = start_date.as_str().ok_or("无效推荐开始日期")?;
+
+                if date.len() != 10 || !date.bytes().enumerate().all(|(index, value)| {
+                    if index == 4 || index == 7 { value == b'-' } else { value.is_ascii_digit() }
+                }) {
+                    return Err("无效推荐开始日期".into());
+                }
+            }
+        }
     }
     for (year, records) in cache {
         let year_number = year.parse::<i32>().map_err(|_| "无效年度")?;
@@ -889,17 +962,29 @@ fn save_state_to_connection(connection: &Connection, state: &Value) -> Result<()
         let id = required_string(record, "id")?;
         if !old_adjustments.into_iter().flatten().any(|item| item["id"] == id && item == record) {
             transaction.execute("INSERT INTO adjustments
-                (id, type, start_date, start_period, end_date, end_period, note, compensation_required, created_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                (id, type, start_date, start_period, end_date, end_period, note, compensation_required, created_at,
+                    recommendation_maximum, recommendation_leave_days, recommendation_work_maximum, recommendation_cross_month,
+                    recommendation_start_date)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                 ON CONFLICT(id) DO UPDATE SET type = excluded.type, start_date = excluded.start_date,
                     start_period = excluded.start_period, end_date = excluded.end_date,
                     end_period = excluded.end_period, note = excluded.note,
-                    compensation_required = excluded.compensation_required, created_at = excluded.created_at",
+                    compensation_required = excluded.compensation_required, created_at = excluded.created_at,
+                    recommendation_maximum = excluded.recommendation_maximum,
+                    recommendation_leave_days = excluded.recommendation_leave_days,
+                    recommendation_work_maximum = excluded.recommendation_work_maximum,
+                    recommendation_cross_month = excluded.recommendation_cross_month,
+                    recommendation_start_date = excluded.recommendation_start_date",
                 params![id, required_string(record, "type")?, required_string(record, "startDate")?,
                     required_string(record, "startPeriod")?, required_string(record, "endDate")?,
                     required_string(record, "endPeriod")?, text_field(record, "note")?,
                     i64::from(record["compensationRequired"].as_bool().ok_or("缺少关联调班类型")?),
-                    required_integer(record, "createdAt")?]
+                    required_integer(record, "createdAt")?,
+                    record["recommendationOptions"]["maximum"].as_f64(),
+                    record["recommendationOptions"]["leaveDays"].as_f64(),
+                    record["recommendationOptions"]["maximumWorkDays"].as_f64(),
+                    record["recommendationOptions"]["allowCrossMonth"].as_bool(),
+                    record["recommendationOptions"]["startDate"].as_str()]
             ).map_err(|error| error.to_string())?;
             transaction.execute("DELETE FROM adjustment_counter_ranges WHERE adjustment_id = ?1", params![id])
                 .map_err(|error| error.to_string())?;
@@ -1219,7 +1304,9 @@ mod tests {
             "adjustments": [{ "id": "adj-1", "type": "rest", "startDate": "2026-09-16", "startPeriod": "am", "endDate": "2026-09-16", "endPeriod": "pm", "compensationRequired": true, "counterRanges": [
                 { "type": "work", "startDate": "2026-09-20", "startPeriod": "am", "endDate": "2026-09-20", "endPeriod": "pm" },
                 { "type": "work", "startDate": "2026-09-26", "startPeriod": "am", "endDate": "2026-09-26", "endPeriod": "am" }
-            ], "note": "", "createdAt": 2 }],
+            ], "note": "", "createdAt": 2,
+                "recommendationOptions": { "maximum": 2.5, "leaveDays": 1.5,
+                    "maximumWorkDays": 6.5, "allowCrossMonth": true, "startDate": "2027-02-01" } }],
             "holidayCache": {
                 "2027": {
                     "2027-01-01": { "kind": "legal", "name": "元旦" },
@@ -1239,6 +1326,11 @@ mod tests {
         assert_eq!(stored["settings"]["backgroundTransparency"], 100);
         assert_eq!(stored["todos"], state["todos"]);
         assert_eq!(stored["adjustments"], state["adjustments"]);
+        let mut unlimited = state.clone();
+        unlimited["adjustments"][0]["recommendationOptions"]["maximumWorkDays"] = Value::Null;
+        save_state_to_connection(&connection, &unlimited).unwrap();
+        let reloaded = load_state_from_connection(&connection).unwrap().unwrap();
+        assert_eq!(reloaded["adjustments"], unlimited["adjustments"]);
         assert_eq!(stored["holidayCache"], state["holidayCache"]);
         assert_eq!(stored["holidayOverrides"], state["holidayOverrides"]);
         let palette_count: i64 = connection.query_row("SELECT COUNT(*) FROM palette_colors", [], |row| row.get(0)).unwrap();
@@ -1276,6 +1368,28 @@ mod tests {
         assert_eq!(load_state_from_connection(&connection).unwrap().unwrap()["settings"], state["settings"]);
         let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
         assert_eq!(version, 10);
+    }
+
+    #[test]
+    fn previous_adjustments_gain_recommendation_columns_without_losing_data() {
+        let connection = test_database();
+
+        for field in ["recommendation_maximum", "recommendation_leave_days", "recommendation_work_maximum",
+            "recommendation_cross_month", "recommendation_start_date"] {
+            let sql = format!("ALTER TABLE adjustments DROP COLUMN {field}");
+            connection.execute_batch(&sql).unwrap();
+        }
+
+        connection.execute("INSERT INTO adjustments
+            (id, type, start_date, start_period, end_date, end_period, note, compensation_required, created_at)
+            VALUES ('legacy', 'rest', '2026-10-01', 'am', '2026-10-01', 'pm', '旧方案', 0, 1)", []).unwrap();
+        initialize_database(&connection).unwrap();
+        let records = load_adjustments(&connection).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["note"], "旧方案");
+        assert!(records[0].get("recommendationOptions").is_none());
+        initialize_database(&connection).unwrap();
+        assert_eq!(load_adjustments(&connection).unwrap(), records);
     }
 
     #[test]

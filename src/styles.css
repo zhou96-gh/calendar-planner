@@ -1093,6 +1093,35 @@ dialog::backdrop { background: rgba(20, 24, 22, 0.42); }
 }
 .recommendation-controls .recommendation-checkbox { flex: none; gap: calc(6 * var(--layout-space)); margin-top: 0; white-space: nowrap; }
 .recommendation-controls input[type="number"] { height: 28px; min-height: 28px; padding-inline: calc(6 * var(--layout-space)); border-radius: 4px; }
+#recommendation-start-date {
+  width: calc(144px * var(--layout-scale));
+  height: 28px;
+  min-height: 28px;
+  padding-inline: calc(6 * var(--layout-space));
+  border-radius: 4px;
+  cursor: pointer;
+}
+.recommendation-date-picker {
+  position: fixed;
+  inset: auto;
+  width: calc(268px * var(--layout-scale));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  margin: 0;
+  padding: calc(12 * var(--layout-space));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 24px #0003;
+}
+.recommendation-date-navigation, .recommendation-date-grid { display: grid; gap: calc(4 * var(--layout-space)); }
+.recommendation-date-navigation { grid-template-columns: auto 1fr auto; align-items: center; text-align: center; }
+.recommendation-date-grid { grid-template-columns: repeat(7, 1fr); margin-block: calc(8 * var(--layout-space)); }
+.recommendation-date-grid > span { text-align: center; color: var(--muted); }
+.recommendation-date-picker button { min-width: 0; min-height: 28px; padding: calc(4 * var(--layout-space)); }
+.recommendation-date-picker [aria-pressed="true"] { background: var(--primary); color: var(--primary-text); }
 .recommendation-field > .field-label { margin: 0; }
 #recommendation-maximum { width: calc(64px * var(--layout-scale)); }
 #recommendation-leave-days { width: calc(64px * var(--layout-scale)); }

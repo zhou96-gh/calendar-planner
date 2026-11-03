@@ -1,5 +1,5 @@
 import { BUILT_IN_HOLIDAYS } from '../holiday/data.js';
-import { isDateKey, sanitizeHolidays, sanitizeSettings } from '../holiday/core.js';
+import { isDateKey, sanitizeHolidays, sanitizeRecommendationOptions, sanitizeSettings } from '../holiday/core.js';
 import { decodeCustomColorsImport, decodeState, encodeState } from '../holiday/storage.js';
 import { getPalette } from '../holiday/appearance.js';
 
@@ -121,12 +121,17 @@ export function decodeDesktopState(value, allowLegacy = false) {
     validateRange(primary);
     record.counterRanges.forEach(validateRange);
 
+    if (record.recommendationOptions !== undefined && !sanitizeRecommendationOptions(record.recommendationOptions)) {
+      throw new Error('推荐临时配置格式不正确');
+    }
+
     return {
       id: record.id,
       ranges: [primary, ...record.counterRanges],
       associationType: record.compensationRequired ? 'required' : 'none',
       note: record.note,
-      createdAt: record.createdAt
+      createdAt: record.createdAt,
+      recommendationOptions: record.recommendationOptions
     };
   });
 
@@ -201,7 +206,7 @@ export function encodeDesktopState(calendar, desktop, schemes) {
 
   const adjustments = state.adjustments.map((record) => {
     const [primary, ...counterRanges] = record.ranges;
-    return {
+    const adjustment = {
       ...primary,
       id: record.id,
       compensationRequired: record.associationType === 'required',
@@ -209,6 +214,10 @@ export function encodeDesktopState(calendar, desktop, schemes) {
       note: record.note,
       createdAt: record.createdAt
     };
+
+    if (record.recommendationOptions) adjustment.recommendationOptions = record.recommendationOptions;
+
+    return adjustment;
   });
 
   const palettes = {

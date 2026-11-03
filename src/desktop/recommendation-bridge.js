@@ -8,6 +8,7 @@ export async function connectRecommendations(context) {
   const root = document.documentElement;
   const content = dialog.querySelector('.vacation-recommendation-content');
   const maximum = dialog.querySelector('#recommendation-maximum');
+  const startDate = dialog.querySelector('#recommendation-start-date');
   const maximumLabel = dialog.querySelector('#recommendation-maximum-label');
   const leaveDays = dialog.querySelector('#recommendation-leave-days');
   const workMaximum = dialog.querySelector('#recommendation-work-maximum');
@@ -25,7 +26,8 @@ export async function connectRecommendations(context) {
     const payload = {
       session, sequence, revision: ++revision,
       template: content.innerHTML, results: results.innerHTML,
-      values: { maximum: maximum.value, leaveDays: leaveDays.value, workMaximum: workMaximum.value, crossMonth: crossMonth.checked },
+      values: { maximum: maximum.value, leaveDays: leaveDays.value, workMaximum: workMaximum.value,
+        crossMonth: crossMonth.checked, startDate: startDate.value },
       limits: { maximum: maximum.max, label: maximumLabel.textContent },
       theme: root.dataset.theme, layoutDensity: root.dataset.layoutDensity, style: root.style.cssText
     };
@@ -48,6 +50,7 @@ export async function connectRecommendations(context) {
     sequence = 0;
     platform.recommendationsOpen = true;
     maximum.setCustomValidity('');
+    startDate.setCustomValidity('');
     leaveDays.setCustomValidity('');
     workMaximum.setCustomValidity('');
 
@@ -110,12 +113,15 @@ export async function connectRecommendations(context) {
       if (current !== sequence) return;
 
       maximum.value = payload.values.maximum;
+      startDate.value = payload.values.startDate;
       leaveDays.value = payload.values.leaveDays;
       workMaximum.value = payload.values.workMaximum;
       crossMonth.checked = payload.values.crossMonth;
       const maximumError = payload.values.maximumBadInput ? '请输入有效天数' : '';
       const workError = payload.values.workMaximumBadInput ? '请输入有效天数' : '';
       const leaveError = payload.values.leaveBadInput ? '请输入有效天数' : '';
+      const startDateError = payload.values.startDateBadInput ? '请输入有效日期' : '';
+      startDate.setCustomValidity(startDateError);
       maximum.setCustomValidity(maximumError);
       workMaximum.setCustomValidity(workError);
       leaveDays.setCustomValidity(leaveError);

@@ -1,5 +1,6 @@
 import { emitTo } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { connectStartDatePicker } from '../holiday/start-date-picker.js';
 import './styles.css';
 
 const root = document.documentElement;
@@ -7,6 +8,7 @@ root.classList.add('platform-desktop', 'desktop-recommendation');
 document.title = '休假推荐';
 document.body.innerHTML = '<main id="recommendation-window-content"></main><p id="recommendation-window-error" role="status" hidden></p>';
 const content = document.querySelector('#recommendation-window-content');
+connectStartDatePicker(content);
 const errorOutput = document.querySelector('#recommendation-window-error');
 let session = 0;
 let sequence = 0;
@@ -37,6 +39,7 @@ function applySnapshot(snapshot) {
     sequence = snapshot.sequence;
     content.innerHTML = snapshot.template;
     content.querySelector('#recommendation-maximum').value = snapshot.values.maximum;
+    content.querySelector('#recommendation-start-date').value = snapshot.values.startDate;
     content.querySelector('#recommendation-leave-days').value = snapshot.values.leaveDays;
     content.querySelector('#recommendation-work-maximum').value = snapshot.values.workMaximum;
     content.querySelector('#recommendation-cross-month').checked = snapshot.values.crossMonth;
@@ -71,17 +74,22 @@ function send(action) {
 function readValues() {
   const maximum = content.querySelector('#recommendation-maximum');
   const leaveDays = content.querySelector('#recommendation-leave-days');
+  const startDate = content.querySelector('#recommendation-start-date');
   const workMaximum = content.querySelector('#recommendation-work-maximum');
   const crossMonth = content.querySelector('#recommendation-cross-month');
   return {
     maximum: maximum.value, leaveDays: leaveDays.value, workMaximum: workMaximum.value, crossMonth: crossMonth.checked,
+    startDate: startDate.value, startDateBadInput: startDate.validity.badInput,
     maximumBadInput: maximum.validity.badInput, workMaximumBadInput: workMaximum.validity.badInput,
     leaveBadInput: leaveDays.validity.badInput
   };
 }
 
 const configure = (event) => {
-  if (!['recommendation-maximum', 'recommendation-leave-days', 'recommendation-work-maximum', 'recommendation-cross-month'].includes(event.target.id)) return;
+  if (!['recommendation-maximum', 'recommendation-leave-days', 'recommendation-work-maximum',
+    'recommendation-cross-month', 'recommendation-start-date'].includes(event.target.id)) {
+    return;
+  }
 
   const values = readValues();
   const action = { kind: 'configure', values };

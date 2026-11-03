@@ -5,7 +5,8 @@ import { runInNewContext } from 'node:vm';
 import { isRecommendationAction, RECOMMENDATION_WINDOW } from '../src/desktop/recommendation-protocol.js';
 
 const values = { maximum: '4', leaveDays: '0', workMaximum: '', crossMonth: false,
-  maximumBadInput: false, workMaximumBadInput: false, leaveBadInput: false };
+  maximumBadInput: false, workMaximumBadInput: false, leaveBadInput: false,
+  startDate: '', startDateBadInput: false };
 
 const bridgeUrl = new URL('../src/desktop/recommendation-bridge.js', import.meta.url);
 
@@ -25,6 +26,7 @@ async function createBridge(options = {}) {
   const cancelled = [];
   const control = (value) => ({ value, error: '', setCustomValidity(message) { this.error = message; } });
   const maximum = control('4');
+  const startDate = control('');
   maximum.max = '31';
   const maximumLabel = { textContent: '最多 31 天' };
   const leaveDays = control('0');
@@ -36,6 +38,7 @@ async function createBridge(options = {}) {
   const fields = new Map([
     ['.vacation-recommendation-content', content],
     ['#recommendation-maximum', maximum],
+    ['#recommendation-start-date', startDate],
     ['#recommendation-maximum-label', maximumLabel],
     ['#recommendation-leave-days', leaveDays],
     ['#recommendation-work-maximum', workMaximum],
@@ -86,7 +89,7 @@ async function createBridge(options = {}) {
   const script = bridgeSource + '\nconnectRecommendations({ platform, application, dialog, notify });';
   await runInNewContext(script, context);
   return { platform, listeners, emitted, invoked, errors, refreshed, observed, maximum, leaveDays, workMaximum,
-    crossMonth, cancelled, clicked: () => clicked };
+    crossMonth, startDate, cancelled, clicked: () => clicked };
 }
 
 const testProtocol = () => {
@@ -96,12 +99,17 @@ const testProtocol = () => {
   const validSelection = isRecommendationAction(use);
   assert.equal(validConfiguration, true);
   assert.equal(validSelection, true);
+  const custom = { ...use, value: 'custom-start' };
+  const validCustom = isRecommendationAction(custom);
+  assert.equal(validCustom, true);
   const cancel = isRecommendationAction({ kind: 'cancel', session: 1, sequence: 1, value: 'group' });
   assert.equal(cancel, true);
 
   for (const invalid of [null, {}, { ...configure, kind: 'script' }, { ...use, value: 'unknown' },
     { ...use, values: null }, { ...configure, session: 0 }, { ...configure, sequence: 0 },
     { ...configure, values: { ...values, maximum: 4 } },
+    { ...configure, values: { ...values, startDate: 2027 } },
+    { ...configure, values: { ...values, startDate: '2027-02-01extra' } },
     { ...configure, kind: 'cancel', value: '' }, { ...configure, kind: 'cancel', value: 4 },
     { ...configure, values: { ...values, crossMonth: 'true' } }]) {
     const valid = isRecommendationAction(invalid);
@@ -140,12 +148,15 @@ const testConfiguration = async () => {
   await bridge.platform.openRecommendations();
   const session = bridge.emitted[0].payload.session;
   const receive = bridge.listeners.get('recommendation-action');
-  const changedValues = { ...values, maximum: '2.5', workMaximum: '6.5', crossMonth: true };
+  const changedValues = { ...values, maximum: '2.5', workMaximum: '6.5', crossMonth: true, startDate: '2027-02-01' };
   const action = { kind: 'configure', session, sequence: 2, values: changedValues };
   await receive({ payload: action });
   assert.equal(bridge.maximum.value, '2.5');
   assert.equal(bridge.workMaximum.value, '6.5');
   assert.equal(bridge.crossMonth.checked, true);
+  assert.equal(bridge.startDate.value, '2027-02-01');
+  const latestSnapshot = bridge.emitted.at(-1).payload;
+  assert.equal(latestSnapshot.values.startDate, '2027-02-01');
   const stale = { ...action, sequence: 1, values };
   await receive({ payload: stale });
   assert.equal(bridge.maximum.value, '2.5');
@@ -231,6 +242,7 @@ const testSnapshot = () => {
   const end = source.indexOf('\nfunction send(', start);
   const fields = new Map([
     ['#recommendation-maximum', { value: '' }],
+    ['#recommendation-start-date', { value: '' }],
     ['#recommendation-maximum-label', { textContent: '' }],
     ['#recommendation-leave-days', { value: '' }],
     ['#recommendation-work-maximum', { value: '' }],
@@ -265,12 +277,15 @@ const testSnapshot = () => {
 
   Object.defineProperty(results, 'innerHTML', resultProperty);
   workMaximum.value = '6.';
+  const startDate = fields.get('#recommendation-start-date');
+  startDate.value = '2027-02-03';
   context.sequence = 2;
   context.applySnapshot({ ...initial, revision: 2, sequence: 1, results: 'stale' });
   assert.equal(results.innerHTML, 'first');
   context.applySnapshot({ ...initial, revision: 3, sequence: 2, results: 'current' });
   assert.equal(results.innerHTML, 'current');
   assert.equal(workMaximum.value, '6.');
+  assert.equal(startDate.value, '2027-02-03');
   assert.equal(content.scrollTop, 42);
   assert.equal(results.scrollLeft, 12);
   maximum.value = '6';
@@ -286,6 +301,7 @@ const testSnapshot = () => {
   context.applySnapshot(reopened);
   assert.equal(content.innerHTML, 'template-2');
   assert.equal(workMaximum.value, '');
+  assert.equal(startDate.value, '');
   assert.equal(context.sequence, 0);
 };
 

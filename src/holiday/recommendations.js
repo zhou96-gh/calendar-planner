@@ -429,6 +429,10 @@ export function getVacationAdjustmentLimit(options) {
 
   const allowance = { maximum: 31, leaveDays };
   const candidates = createVacationCandidates(context, allowance);
+  const startContext = createStartDateContext(context, options.startDate);
+
+  if (startContext) candidates.push(...createVacationCandidates(startContext, allowance));
+
   const limits = { ...allowance, allowHalfDays: true };
   const ranked = candidates.map((candidate) => prepareVacation(candidate, limits)).filter(Boolean)
     .sort((a, b) => b.requiredWorkSlots - a.requiredWorkSlots);
@@ -516,12 +520,26 @@ function prepareVacation(candidate, limits) {
   return { ...candidate, requiredWorkSlots };
 }
 
+/**
+ * 指定方案只固定起点，复用假期搜索范围及所有排班约束。
+ */
+function createStartDateContext(context, startDate) {
+  if (!isDateKey(startDate)) return null;
+
+  const start = context.slots.findIndex((slot) => slot.dateKey === startDate);
+
+  if (start < 0) return null;
+
+  return { ...context, legalStart: start, legalEnd: start, fixedStart: true };
+}
+
 function createVacationCandidates(context, limits) {
   const { slots, legalStart, legalEnd } = context;
   const { maximum, leaveDays } = limits;
   const candidates = [];
+  const startBoundary = context.fixedStart ? legalStart : 0;
 
-  for (let start = legalStart; start >= 0; start -= 1) {
+  for (let start = legalStart; start >= startBoundary; start -= 1) {
     const before = slots.slice(start, legalStart).filter((slot) => !slot.isRest);
 
     if (before.some((slot) => slot.protected)) break;
@@ -575,18 +593,31 @@ export function recommendVacations(options) {
       compare: (a, b) => b.length - a.length || a.requiredWorkSlots - b.requiredWorkSlots
     }
   ];
-  const workCache = new Map();
-  const fullDayCandidates = candidates.filter((candidate) => candidate.rest.every((slot, index) =>
-    index % 2 === 1 || slot.period === 'am' && candidate.rest[index + 1]?.dateKey === slot.dateKey));
-  const modes = [];
 
-  if (Number.isInteger(maximum) && Number.isInteger(leaveDays)) {
-    modes.push({ candidates: fullDayCandidates, allowHalfDays: false });
+  if (options.startDate) {
+    strategies.push({ id: 'custom-start', title: '指定日期开始', compare: (a, b) => b.length - a.length });
   }
 
-  modes.push({ candidates, allowHalfDays: true });
+  const startContext = createStartDateContext(context, options.startDate);
+  let startCandidates = [];
+
+  if (startContext) startCandidates = createVacationCandidates(startContext, allowance);
+
+  const workCache = new Map();
 
   return strategies.map((strategy) => {
+    const strategyCandidates = strategy.id === 'custom-start' ? startCandidates : candidates;
+    const fullDayCandidates = strategyCandidates.filter((candidate) => candidate.rest.every((slot, index) =>
+      index % 2 === 1 || slot.period === 'am' && candidate.rest[index + 1]?.dateKey === slot.dateKey));
+
+    const modes = [];
+
+    if (Number.isInteger(maximum) && Number.isInteger(leaveDays)) {
+      modes.push({ candidates: fullDayCandidates, allowHalfDays: false });
+    }
+
+    modes.push({ candidates: strategyCandidates, allowHalfDays: true });
+
     const rank = strategy.rank ?? strategy.compare;
     let best = null;
 

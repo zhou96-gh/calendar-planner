@@ -11,7 +11,7 @@ export function isRecommendationAction(action) {
 
   if (action.kind === 'cancel') return typeof action.value === 'string' && action.value.length > 0 && action.value.length <= 80;
 
-  if (action.kind === 'use' && !['earliest', 'longest', 'shortest-work'].includes(action.value)) return false;
+  if (action.kind === 'use' && !['earliest', 'longest', 'shortest-work', 'custom-start'].includes(action.value)) return false;
 
   if (!['configure', 'use'].includes(action.kind)) return false;
 
@@ -20,6 +20,8 @@ export function isRecommendationAction(action) {
   if (!values) return false;
 
   return typeof values.maximum === 'string' && values.maximum.length <= 32
+    && typeof values.startDate === 'string' && values.startDate.length <= 10
+    && typeof values.startDateBadInput === 'boolean'
     && typeof values.leaveDays === 'string' && values.leaveDays.length <= 32
     && typeof values.workMaximum === 'string' && values.workMaximum.length <= 32
     && typeof values.crossMonth === 'boolean'

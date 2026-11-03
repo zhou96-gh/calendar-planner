@@ -404,6 +404,10 @@
         </div>
         <p id="vacation-recommendation-holiday"></p>
         <div class="recommendation-controls">
+          <label class="recommendation-field" for="recommendation-start-date">
+            <span class="field-label">开始休息日期</span>
+            <input id="recommendation-start-date" type="text" readonly placeholder="选择日期" aria-haspopup="dialog" aria-expanded="false" title="留空不增加方案；范围为本假期及前后相邻月" />
+          </label>
           <label class="recommendation-field" for="recommendation-maximum">
             <span id="recommendation-maximum-label" class="field-label">调休上限</span>
             <input id="recommendation-maximum" type="number" min="0" max="31" step="0.5" required />

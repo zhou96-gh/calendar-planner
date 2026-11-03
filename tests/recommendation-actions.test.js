@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import {
   addDays, calculateAdjustmentDays, classifyDay, getAdjustmentRanges, getAdjustmentSummary,
-  hasAdjustmentOverlap, mergeAssociatedAdjustment, sanitizeAdjustmentRecords, sanitizeSettings
+  hasAdjustmentOverlap, isDateKey, mergeAssociatedAdjustment, sanitizeAdjustmentRecords, sanitizeSettings
 } from '../src/holiday/core.js';
 import { getVacationAdjustmentLimit, hasCrossMonthCompensation, recommendVacations } from '../src/holiday/recommendations.js';
 import { createQuotaHolidays } from '../src/holiday/quota.js';
@@ -42,6 +42,7 @@ function createPage() {
   const elements = {
     recommendationDialog: dialog, recommendationHoliday: createElement(),
     recommendationMaximum: createElement(), recommendationCrossMonth: createElement(),
+    recommendationStartDate: createElement(),
     recommendationMaximumLabel: createElement(), recommendationLeaveDays: createElement(),
     recommendationWorkMaximum: createElement(),
     recommendationResults: createElement()
@@ -49,7 +50,8 @@ function createPage() {
 
   const context = {
     state, elements, document: { createElement }, classifyDay, recommendVacations, getVacationAdjustmentLimit,
-    hasCrossMonthCompensation,
+    hasCrossMonthCompensation, isDateKey,
+    connectStartDatePicker: () => {},
     getVacationSelection, getAdjustmentRanges, calculateAdjustmentDays, addDays,
     structuredClone, createAdjustmentId: () => crypto.randomUUID(),
     recommendationRequest: 0, recommendationDateKey: '', recommendationEndDate: '',
@@ -73,6 +75,8 @@ const testTemporaryOptions = async () => {
   assert.equal(page.elements.recommendationWorkMaximum.value, '');
   assert.equal(page.elements.recommendationLeaveDays.value, '0');
   assert.equal(page.elements.recommendationCrossMonth.checked, false);
+  assert.equal(page.elements.recommendationStartDate.value, '');
+  assert.equal(page.elements.recommendationStartDate.dataset.defaultDate, '2026-10-01');
   const table = page.elements.recommendationResults.children[0];
   assert.equal(table.tagName, 'TABLE');
   assert.equal(table.attributes['aria-label'], '休假推荐方案');
@@ -181,6 +185,7 @@ const testUseRecommendation = () => {
   const listeners = {};
   const opened = [];
   page.elements.recommendationMaximum.addEventListener = () => {};
+  page.elements.recommendationStartDate.addEventListener = () => {};
   page.elements.recommendationLeaveDays.addEventListener = () => {};
   page.elements.recommendationWorkMaximum.addEventListener = () => {};
   page.elements.recommendationCrossMonth.addEventListener = () => {};
@@ -491,6 +496,7 @@ const testSelectionLifecycle = async () => {
   const listeners = {};
   page.elements.recommendationDialog.addEventListener = (type, action) => { listeners[type] = action; };
   page.elements.recommendationMaximum.addEventListener = () => {};
+  page.elements.recommendationStartDate.addEventListener = () => {};
   page.elements.recommendationLeaveDays.addEventListener = () => {};
   page.elements.recommendationWorkMaximum.addEventListener = () => {};
   page.elements.recommendationCrossMonth.addEventListener = () => {};
@@ -524,8 +530,11 @@ const testSelectionLifecycle = async () => {
   page.recommendationEndDate = '2026-10-14';
   page.elements.recommendationMaximum.value = '1';
   page.elements.recommendationLeaveDays.value = '1';
+  page.elements.recommendationWorkMaximum.value = '10.5';
+  page.elements.recommendationCrossMonth.checked = true;
+  page.elements.recommendationStartDate.value = '2026-10-13';
   page.elements.recommendationDialog.open = true;
-  const button = { dataset: { useRecommendation: 'longest' } };
+  const button = { dataset: { useRecommendation: 'custom-start' } };
   const event = { target: { closest: (selector) => {
     if (selector === '[data-use-recommendation]') return button;
 
@@ -548,17 +557,31 @@ const testSelectionLifecycle = async () => {
   const holiday = { dateKey: page.recommendationDateKey, endDate: page.recommendationEndDate };
   const selected = getVacationSelection(page.state.adjustments, holiday);
   assert.equal(selected.records.length, 2);
+  page.elements.recommendationMaximum.value = '3';
+  page.elements.recommendationLeaveDays.value = '4';
+  page.elements.recommendationWorkMaximum.value = '';
+  page.elements.recommendationCrossMonth.checked = false;
   page.openVacationRecommendations(holiday.dateKey, holiday.endDate);
   await page.prepareVacationRecommendations();
+  assert.equal(page.elements.recommendationMaximum.value, '1');
   assert.equal(page.elements.recommendationLeaveDays.value, '1');
+  assert.equal(page.elements.recommendationWorkMaximum.value, '10.5');
+  assert.equal(page.elements.recommendationCrossMonth.checked, true);
+  assert.equal(page.elements.recommendationStartDate.value, '2026-10-13');
+  assert.equal(selected.planId, 'custom-start');
+  assert.equal(page.state.settings.monthlyMaxAdjustmentDays, 4);
+  assert.equal(page.state.settings.allowCrossMonthAdjustment, false);
   page.elements.recommendationMaximum.value = '1';
   page.elements.recommendationDialog.open = true;
   page.renderVacationRecommendations();
   const results = page.elements.recommendationResults;
   assert.equal(results.children[0].children[1].textContent, '取消方案');
+  const rows = results.children[1].children[1].children;
+  assert.ok(rows.some((row) => row.children[0].textContent === '指定日期开始'));
   const recommended = page.vacationRecommendations;
   const baseline = recommendVacations({ dateKey: holiday.dateKey, holidayEndDate: holiday.endDate,
-    settings: page.state.settings, holidays: page.state.holidays, adjustments: original, maximum: 1, leaveDays: 1 });
+    settings: page.state.settings, holidays: page.state.holidays, adjustments: original,
+    maximum: 1, leaveDays: 1, maximumWorkDays: 10.5, allowCrossMonth: true, startDate: '2026-10-13' });
   const actualPlans = JSON.stringify(recommended);
   const expectedPlans = JSON.stringify(baseline);
   assert.equal(actualPlans, expectedPlans);
@@ -580,6 +603,11 @@ const testSelectionLifecycle = async () => {
   assert.notEqual(replacement.groupId, selected.groupId);
   assert.equal(replacement.records.length, 1);
   assert.equal(replacement.records[0].associationType, 'none');
+  page.openVacationRecommendations(holiday.dateKey, holiday.endDate);
+  await page.prepareVacationRecommendations();
+  assert.equal(page.elements.recommendationMaximum.value, '0');
+  assert.equal(page.elements.recommendationLeaveDays.value, '2');
+  assert.equal(page.elements.recommendationWorkMaximum.value, '10.5');
   assert.equal(page.state.adjustments.length, 2);
   const afterReplacement = structuredClone(page.state.adjustments);
   const staleSave = await page.saveAdjustmentRecord();
@@ -592,11 +620,19 @@ const testSelectionLifecycle = async () => {
   await assert.rejects(failedCancel, /模拟写入失败/);
   assert.deepEqual(page.state.adjustments, afterReplacement);
   fail = false;
+  const prepare = page.prepareVacationRecommendations;
   page.prepareVacationRecommendations = () => assert.fail('取消方案不应等待年度数据加载');
   await page.cancelVacationRecommendation(replacement.groupId);
+  page.prepareVacationRecommendations = prepare;
   assert.deepEqual(page.state.adjustments, original);
   const none = getVacationSelection(page.state.adjustments, holiday);
   assert.equal(none, null);
+  page.openVacationRecommendations(holiday.dateKey, holiday.endDate);
+  assert.equal(page.elements.recommendationMaximum.value, '4');
+  assert.equal(page.elements.recommendationLeaveDays.value, '0');
+  assert.equal(page.elements.recommendationWorkMaximum.value, '');
+  assert.equal(page.elements.recommendationCrossMonth.checked, false);
+  assert.equal(page.elements.recommendationStartDate.value, '');
   page.elements.recommendationMaximum.value = '1';
   page.elements.recommendationLeaveDays.value = '1';
   page.elements.recommendationDialog.open = true;

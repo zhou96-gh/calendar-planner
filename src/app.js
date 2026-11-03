@@ -4,6 +4,7 @@ import { formatLunarDate, getFestivalNames } from './holiday/festivals.js';
 import { createQuotaHolidays, prepareQuotaHolidays } from './holiday/quota.js';
 import { COLOR_DEFAULTS, getPalette } from './holiday/appearance.js';
 import { getVacationAdjustmentLimit, hasCrossMonthCompensation, recommendVacations } from './holiday/recommendations.js';
+import { connectStartDatePicker } from './holiday/start-date-picker.js';
 import {
   getVacationRecordGroup, getVacationReplacementRecords, getVacationSelection
 } from './holiday/recommendation-selection.js';
@@ -29,6 +30,7 @@ import {
   getAdjustmentRanges,
   getYearLegalBreakdown,
   hasAdjustmentOverlap,
+  isDateKey,
   mergeAssociatedAdjustment,
   removeAdjustmentYear,
   sanitizeAdjustmentRecords,
@@ -127,6 +129,7 @@ const elements = {
   recommendationDialog: document.querySelector('#vacation-recommendation-dialog'),
   recommendationHoliday: document.querySelector('#vacation-recommendation-holiday'),
   recommendationMaximum: document.querySelector('#recommendation-maximum'),
+  recommendationStartDate: document.querySelector('#recommendation-start-date'),
   recommendationMaximumLabel: document.querySelector('#recommendation-maximum-label'),
   recommendationLeaveDays: document.querySelector('#recommendation-leave-days'),
   recommendationWorkMaximum: document.querySelector('#recommendation-work-maximum'),
@@ -979,7 +982,7 @@ function renderHolidayList(container, items, emptyText, allItems = items) {
     const selected = getVacationSelection(state.adjustments, holiday);
 
     if (selected) {
-      const titles = { earliest: '最早放假', longest: '最长假期', 'shortest-work': '最短连续上班' };
+      const titles = { earliest: '最早放假', longest: '最长假期', 'shortest-work': '最短连续上班', 'custom-start': '指定日期开始' };
       const plan = document.createElement('small');
       plan.className = 'holiday-recommendation';
       plan.textContent = titles[selected.planId];
@@ -999,13 +1002,25 @@ function openVacationRecommendations(dateKey, endDate) {
   const day = classifyDay(dateKey, state.settings, calendarHolidays, state.adjustments);
   elements.recommendationHoliday.textContent = `${day.holiday?.name ?? '假期'} · ${dateKey}`;
   elements.recommendationMaximum.value = String(state.settings.monthlyMaxAdjustmentDays);
+  elements.recommendationStartDate.value = '';
+  elements.recommendationStartDate.dataset.defaultDate = dateKey;
   elements.recommendationLeaveDays.value = '0';
   elements.recommendationWorkMaximum.value = '';
   elements.recommendationCrossMonth.checked = state.settings.allowCrossMonthAdjustment;
   const holiday = { dateKey, endDate };
   const selected = getVacationSelection(state.adjustments, holiday);
+  const options = selected?.records.find((record) => record.recommendationOptions)?.recommendationOptions;
 
-  if (selected) {
+  if (options) {
+    elements.recommendationMaximum.value = String(options.maximum);
+    elements.recommendationStartDate.value = options.startDate ?? '';
+    elements.recommendationLeaveDays.value = String(options.leaveDays);
+    elements.recommendationWorkMaximum.value = '';
+
+    if (options.maximumWorkDays !== null) elements.recommendationWorkMaximum.value = String(options.maximumWorkDays);
+
+    elements.recommendationCrossMonth.checked = options.allowCrossMonth;
+  } else if (selected) {
     let leaveDays = 0;
 
     selected.records.forEach((record) => {
@@ -1177,6 +1192,14 @@ function renderVacationRecommendations() {
   const selectedIds = new Set(selected?.records.map((record) => record.id) ?? []);
   const adjustments = state.adjustments.filter((record) => !selectedIds.has(record.id));
   const leaveDays = elements.recommendationLeaveDays.valueAsNumber;
+  const startDate = elements.recommendationStartDate.value;
+
+  if (!elements.recommendationStartDate.checkValidity() || startDate && !isDateKey(startDate)) {
+    elements.recommendationResults.textContent = '开始休息日期请输入有效日期，或留空。';
+    vacationRecommendations = [];
+    renderVacationSelection(selected);
+    return;
+  }
 
   if (!elements.recommendationLeaveDays.value || !elements.recommendationLeaveDays.checkValidity()
     || !Number.isSafeInteger(leaveDays * 2)) {
@@ -1200,7 +1223,7 @@ function renderVacationRecommendations() {
 
   const context = {
     dateKey: recommendationDateKey, holidayEndDate: recommendationEndDate,
-    settings: state.settings, holidays: calendarHolidays, adjustments, leaveDays, maximumWorkDays,
+    settings: state.settings, holidays: calendarHolidays, adjustments, leaveDays, maximumWorkDays, startDate,
     allowCrossMonth: elements.recommendationCrossMonth.checked
   };
 
@@ -1250,7 +1273,7 @@ function renderVacationRecommendations() {
       const schedule = { vacation: plan.vacation, ranges: plan.ranges, leaveRanges: plan.leaveRanges };
       const key = JSON.stringify(schedule);
 
-      if (displayedPlans.has(key)) return;
+      if (plan.id !== 'custom-start' && displayedPlans.has(key)) return;
 
       displayedPlans.add(key);
     }
@@ -1342,6 +1365,8 @@ function renderVacationRecommendations() {
   } else {
     allowanceDescription += '；连班不限';
   }
+
+  if (startDate) allowanceDescription += `；指定方案从 ${startDate} 开始（范围为假期前后相邻月）`;
 
   help.textContent = `本次：${allowanceDescription}。整天优先，半天补班优先上午；休息 ≥ 0.5 天 ⇒ 连班中断。`;
   elements.recommendationResults.append(table, help);
@@ -1672,6 +1697,10 @@ async function saveAdjustmentRecord() {
       createdAt: existing?.createdAt ?? Date.now()
     };
 
+    if (selection) record.recommendationOptions = selection.options;
+
+    if (!selection && existing?.recommendationOptions) record.recommendationOptions = existing.recommendationOptions;
+
     const baseline = getVacationReplacementRecords(next.adjustments, selection);
     const original = baseline.filter((item) => item.id !== operationId);
     let reconciliation = { mergedIds: [], remaining: [] };
@@ -1689,8 +1718,12 @@ async function saveAdjustmentRecord() {
 
       if (selection) leaveId = `${selection.groupId}|l`;
 
-      leaveRecords.push({ id: leaveId, associationType: 'none', ranges: leaveRanges,
-        note: '假期（无需补班）', createdAt: record.createdAt });
+      const leaveRecord = { id: leaveId, associationType: 'none', ranges: leaveRanges,
+        note: '假期（无需补班）', createdAt: record.createdAt };
+
+      if (selection) leaveRecord.recommendationOptions = selection.options;
+
+      leaveRecords.push(leaveRecord);
     }
 
     next.adjustments = sanitizeAdjustmentRecords([
@@ -2178,6 +2211,8 @@ const saveCrossMonthSetting = async () => {
 listenForSave(elements.allowCrossMonthAdjustment, 'change', saveCrossMonthSetting);
 
 elements.recommendationMaximum.addEventListener('input', prepareVacationRecommendations);
+elements.recommendationStartDate.addEventListener('input', prepareVacationRecommendations);
+connectStartDatePicker(elements.recommendationDialog);
 elements.recommendationLeaveDays.addEventListener('input', prepareVacationRecommendations);
 elements.recommendationWorkMaximum.addEventListener('input', prepareVacationRecommendations);
 elements.recommendationCrossMonth.addEventListener('change', prepareVacationRecommendations);
@@ -2200,8 +2235,21 @@ const useVacationRecommendation = (event) => {
   const selected = getVacationSelection(state.adjustments, holiday);
   const token = createAdjustmentId();
   const groupId = `rec|${holiday.dateKey}|${holiday.endDate}|${plan.id}|${token}`;
-  record.recommendationSelection = { ...holiday, groupId,
-    previousRecords: structuredClone(selected?.records ?? []) };
+  record.recommendationSelection = {
+    ...holiday,
+    groupId,
+    previousRecords: structuredClone(selected?.records ?? []),
+    options: {
+      maximum: elements.recommendationMaximum.valueAsNumber,
+      leaveDays: elements.recommendationLeaveDays.valueAsNumber,
+      maximumWorkDays: elements.recommendationWorkMaximum.value ? elements.recommendationWorkMaximum.valueAsNumber : null,
+      allowCrossMonth: elements.recommendationCrossMonth.checked
+    }
+  };
+
+  if (elements.recommendationStartDate.value) {
+    record.recommendationSelection.options.startDate = elements.recommendationStartDate.value;
+  }
 
   if (!plan.ranges.length) {
     record.ranges = plan.leaveRanges;

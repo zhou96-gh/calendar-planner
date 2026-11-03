@@ -8,7 +8,7 @@ export function getVacationRecordGroup(id) {
   const parts = id.split('|');
 
   if (parts.length !== 6 || parts[0] !== 'rec' || !isDateKey(parts[1]) || !isDateKey(parts[2])
-    || parts[2] < parts[1] || !['earliest', 'longest', 'shortest-work'].includes(parts[3])
+    || parts[2] < parts[1] || !['earliest', 'longest', 'shortest-work', 'custom-start'].includes(parts[3])
     || !parts[4] || !['m', 'l'].includes(parts[5])) return '';
 
   return parts.slice(0, 5).join('|');
