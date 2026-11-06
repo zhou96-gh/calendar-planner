@@ -54,19 +54,24 @@ const shuyzHoliday = {
 };
 
 const shuyzPayload = { Years: { 2026: [shuyzHoliday] } };
+const sourceUrls = [
+  'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/2026.json',
+  'https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/2026.json',
+  'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json'
+];
 
 const testDirectSource = async () => {
   const attempts = [];
   const fakeFetch = async (url, options) => {
     attempts.push({ url, signal: options.signal });
-    return { ok: true, json: async () => shuyzPayload };
+    return { ok: true, json: async () => payload };
   };
 
   const records = await fetchHolidayYear(2026, fakeFetch);
   const expected = transformHolidayPayload(payload, 2026);
   assert.deepEqual(records, expected);
   assert.equal(attempts.length, 1);
-  assert.equal(attempts[0].url, 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json');
+  assert.equal(attempts[0].url, 'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/2026.json');
   assert.equal(attempts[0].signal.aborted, true);
 
   const configUrl = new URL('../src-tauri/tauri.conf.json', import.meta.url);
@@ -81,7 +86,12 @@ const testMissingYear = async () => {
   const inputs = [{ Years: {} }, { Years: { 2027: [] } }];
 
   for (const input of inputs) {
-    const fakeFetch = async () => ({ ok: true, json: async () => input });
+    const fakeFetch = async (url) => {
+      if (url.includes('shuyz.com')) return { ok: true, json: async () => input };
+
+      return { ok: false, status: 404 };
+    };
+
     const getYear = () => fetchHolidayYear(2027, fakeFetch);
     await assert.rejects(getYear, HolidayDataUnavailableError);
   }
@@ -105,22 +115,125 @@ const testStalledSource = async (context) => {
     const fakeFetch = async (_url, options) => {
       signals.push(options.signal);
 
+      if (signals.length % 2 === 0) return { ok: true, json: async () => payload };
+
       if (phase === 'request') return never;
 
       return { ok: true, json: () => never };
     };
 
     const pending = fetchHolidayYear(2026, fakeFetch);
-    const check = (error) => !(error instanceof HolidayDataUnavailableError) && error.message.includes('超时');
-    const rejected = assert.rejects(pending, check);
+    const requestCount = signals.length;
+    assert.equal(requestCount % 2, 1);
     context.mock.timers.tick(5000);
-    await rejected;
+    const records = await pending;
+    assert.equal(records['2026-10-01'].kind, 'block');
   }
 
   const allAborted = signals.every((signal) => signal.aborted);
-  assert.equal(signals.length, 2);
+  assert.equal(signals.length, 4);
   assert.ok(allAborted);
 };
+
+const testFastlyFallback = async () => {
+  const empty = { year: 2026, days: [] };
+  const wrongYear = { ...payload, year: 2025 };
+  const invalid = { year: 2026, days: [{ date: 'invalid', name: '国庆节', isOffDay: true }] };
+  const invalidJson = async () => { throw new SyntaxError('无效 JSON'); };
+  const failures = [
+    { ok: false, status: 503 },
+    { ok: false, status: 404 },
+    { ok: true, json: async () => empty },
+    { ok: true, json: async () => wrongYear },
+    { ok: true, json: async () => invalid },
+    { ok: true, json: invalidJson }
+  ];
+
+  for (const failure of failures) {
+    const calls = [];
+    const fakeFetch = async (url) => {
+      calls.push(url);
+
+      if (calls.length === 1) return failure;
+
+      return { ok: true, json: async () => payload };
+    };
+
+    const records = await fetchHolidayYear(2026, fakeFetch);
+    const expectedCalls = sourceUrls.slice(0, 2);
+    assert.deepEqual(calls, expectedCalls);
+    assert.equal(records['2026-10-01'].legalDays, 3);
+  }
+};
+
+const testShuyzFallback = async () => {
+  const calls = [];
+  const fakeFetch = async (url) => {
+    calls.push(url);
+
+    if (calls.length < 3) throw new TypeError('网络不可用');
+
+    return { ok: true, json: async () => shuyzPayload };
+  };
+
+  const records = await fetchHolidayYear(2026, fakeFetch);
+  const expected = transformHolidayPayload(payload, 2026);
+  assert.deepEqual(calls, sourceUrls);
+  assert.deepEqual(records, expected);
+
+  const configUrl = new URL('../src-tauri/tauri.conf.json', import.meta.url);
+  const rawConfig = readFileSync(configUrl, 'utf8');
+  const config = JSON.parse(rawConfig);
+  const permittedSources = config.app.security.csp.split(' ');
+
+  calls.forEach((url) => {
+    const origin = new URL(url).origin;
+    assert.ok(permittedSources.includes(origin));
+  });
+};
+
+const testMixedFailure = async () => {
+  const empty = { year: 2027, days: [] };
+  const fakeFetch = async (url) => {
+    if (url.includes('fastly.jsdelivr.net')) throw new TypeError('网络不可用');
+
+    if (url.includes('shuyz.com')) return { ok: true, json: async () => ({ Years: {} }) };
+
+    return { ok: true, json: async () => empty };
+  };
+
+  const getYear = () => fetchHolidayYear(2027, fakeFetch);
+  const check = (error) => !(error instanceof HolidayDataUnavailableError)
+    && error.message.includes('Fastly：网络不可用');
+  await assert.rejects(getYear, check);
+};
+
+const testLateFailure = async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  let rejectPrimary;
+  const primary = new Promise((_resolve, reject) => { rejectPrimary = reject; });
+  let calls = 0;
+  const fakeFetch = async () => {
+    calls += 1;
+
+    if (calls === 1) return primary;
+
+    return { ok: true, json: async () => payload };
+  };
+
+  const pending = fetchHolidayYear(2026, fakeFetch);
+  context.mock.timers.tick(5000);
+  const records = await pending;
+  rejectPrimary(new Error('超时入口的迟到失败'));
+  await Promise.resolve();
+  assert.equal(calls, 2);
+  assert.equal(records['2026-10-01'].kind, 'block');
+};
+
+test('主入口服务异常、空年、错年、畸形日期或JSON解析失败时切换Fastly', testFastlyFallback);
+test('两个CDN不可用时再使用原有ShuYZ，三个入口均符合桌面CSP', testShuyzFallback);
+test('缺年与网络异常混合时保留获取失败分类，不冒充全部数据源未收录', testMixedFailure);
+test('超时入口迟到失败被处理，不干扰已成功切换的年度结果', testLateFailure);
 
 const testCombinedHoliday = () => {
   const holiday = {
@@ -182,10 +295,10 @@ const testInvalidSource = () => {
   });
 };
 
-test('在线仅请求 ShuYZ 网站直连地址，并转换为原有年度存储契约', testDirectSource);
-test('ShuYZ 缺失或空年度可识别为数据源暂无安排', testMissingYear);
+test('优先 jsDelivr，成功后不请求其他入口且输出原有年度存储契约', testDirectSource);
+test('两个年度文件404且ShuYZ缺失或空年度时才返回数据源暂无安排', testMissingYear);
 test('全年集合文件 404 和服务异常不能冒充年度未收录', testSourceFailure);
-test('请求或 JSON 解析卡住均会超时并中止请求', testStalledSource);
+test('请求或 JSON 解析超时后中止并切换 Fastly，不提前请求备用入口', testStalledSource);
 test('合并假期保留同一段区间，并合计各节日法定额度', testCombinedHoliday);
 test('跨年假期保留完整跨度及补班数量，只保存本年日期且不重复分配法定额度', testCrossYearHoliday);
 test('畸形集合、区间、日期及冲突数据不会作为有效年度保存', testInvalidSource);

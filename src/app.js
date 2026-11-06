@@ -426,6 +426,10 @@ function setView(view) {
   elements.settingsFloatingBack.hidden = !isSettings;
 
   if (isSettings) {
+    for (const guide of elements.settingsView.querySelectorAll('details:not(.color-group)')) {
+      guide.open = false;
+    }
+
     elements.resetYear.value = String(viewYear);
     renderYearDataStatus();
   }

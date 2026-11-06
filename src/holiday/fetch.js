@@ -1,6 +1,25 @@
 import { addDays, isDateKey } from './core.js';
 
-const HOLIDAY_SOURCE = 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json';
+const HOLIDAY_SOURCES = [
+  {
+    name: 'jsDelivr',
+    url: 'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/{year}.json',
+    transform: transformHolidayPayload,
+    annualFile: true
+  },
+  {
+    name: 'Fastly',
+    url: 'https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/{year}.json',
+    transform: transformHolidayPayload,
+    annualFile: true
+  },
+  {
+    name: 'ShuYZ',
+    url: 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json',
+    transform: transformShuyzPayload,
+    annualFile: false
+  }
+];
 
 /**
  * 年度安排尚未提供，与网络故障、服务异常及数据格式错误区分。
@@ -89,6 +108,8 @@ export function transformHolidayPayload(payload, requestedYear) {
   });
 
   if (Object.keys(records).length === 0) {
+    if (payload.days.length > 0) throw new Error('节假日数据中没有有效的年度日期');
+
     throw new HolidayDataUnavailableError(requestedYear);
   }
 
@@ -159,36 +180,53 @@ export function transformShuyzPayload(payload, requestedYear) {
 }
 
 /**
- * 直连 ShuYZ 网站，覆盖请求与解析的超时，结束后取消未完成的网络操作。
+ * 按优先级依次直连各入口；每次请求与解析独立限时，首个有效年度成功即停止。
  */
 export async function fetchHolidayYear(year, fetchImplementation = fetch) {
-  const controller = new AbortController();
-  let timer;
+  const failures = [];
+  const yearValue = String(year);
 
-  const deadline = new Promise((_resolve, reject) => {
-    const onTimeout = () => {
-      reject(new Error(`${year} 年假期数据请求超时`));
-      controller.abort();
+  for (const source of HOLIDAY_SOURCES) {
+    const controller = new AbortController();
+    let timer;
+
+    const deadline = new Promise((_resolve, reject) => {
+      const onTimeout = () => {
+        reject(new Error(`${year} 年假期数据请求超时`));
+        controller.abort();
+      };
+
+      timer = setTimeout(onTimeout, 5000);
+    });
+
+    const request = async () => {
+      const url = source.url.replace('{year}', yearValue);
+      const options = { cache: 'no-store', headers: { Accept: 'application/json' }, signal: controller.signal };
+      const response = await fetchImplementation(url, options);
+
+      if (source.annualFile && response.status === 404) throw new HolidayDataUnavailableError(year);
+
+      if (!response.ok) throw new Error(`数据源返回 ${response.status}`);
+
+      const payload = await response.json();
+      return source.transform(payload, year);
     };
 
-    timer = setTimeout(onTimeout, 5000);
-  });
-
-  const request = async () => {
-    const options = { cache: 'no-store', headers: { Accept: 'application/json' }, signal: controller.signal };
-    const response = await fetchImplementation(HOLIDAY_SOURCE, options);
-
-    if (!response.ok) throw new Error(`数据源返回 ${response.status}`);
-
-    const payload = await response.json();
-    return transformShuyzPayload(payload, year);
-  };
-
-  try {
-    const attempts = [request(), deadline];
-    return await Promise.race(attempts);
-  } finally {
-    clearTimeout(timer);
-    controller.abort();
+    try {
+      const attempts = [request(), deadline];
+      return await Promise.race(attempts);
+    } catch (error) {
+      failures.push({ name: source.name, error });
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+    }
   }
+
+  if (failures.every(({ error }) => error instanceof HolidayDataUnavailableError)) {
+    throw new HolidayDataUnavailableError(year);
+  }
+
+  const details = failures.map(({ name, error }) => `${name}：${error.message}`).join('；');
+  throw new Error(`所有假期数据入口获取失败：${details}`);
 }

@@ -310,7 +310,10 @@
               <label class="field-label" for="monthly-max-adjustment-days">调休上限</label>
               <input id="monthly-max-adjustment-days" type="number" min="0" max="31" step="0.5" value="4" required />
               <label class="recommendation-checkbox" title="开启后允许调休与补班在相邻月份配对，优先同月"><input id="allow-cross-month-adjustment" type="checkbox" />跨月</label>
-              <p>休假推荐按本次新增调休总天数使用此上限，跨月合计，已有调班不扣本次额度；推荐窗口中可临时修改，免补班假期使用额外额度。“跨月”控制调休与补班的月份配对，关闭时每个月分别等量匹配。</p>
+              <details class="color-import-guide">
+                <summary>调休上限与跨月说明</summary>
+                <p>休假推荐按本次新增调休总天数使用此上限，跨月合计，已有调班不扣本次额度；推荐窗口中可临时修改，免补班假期使用额外额度。“跨月”控制调休与补班的月份配对，关闭时每个月分别等量匹配。</p>
+              </details>
               <label class="field-label" for="week-starts-on">每周开始于</label>
               <select id="week-starts-on">
                 <option value="6">周日</option>
@@ -376,7 +379,7 @@
               <input id="import-file" type="file" accept="application/json,.json" hidden />
               <details class="color-import-guide">
                 <summary>数据来源与使用说明</summary>
-                <p>在线安排来自 <a href="https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json" data-external-link target="_blank" rel="noopener noreferrer">ShuYZ 中国节假日</a>，直接从 ShuYZ 网站获取。尚未收录不代表官方未公布，请以国务院通知为准。</p>
+                <p>优先通过 <a href="https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/" data-external-link target="_blank" rel="noopener noreferrer">jsDelivr</a> 获取 holiday-cn 年度安排，失败或缺少该年数据时依次尝试 <a href="https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/" data-external-link target="_blank" rel="noopener noreferrer">Fastly</a>、<a href="https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json" data-external-link target="_blank" rel="noopener noreferrer">ShuYZ</a>。两个 CDN 入口提供同一份数据；各入口均未收录不代表官方未公布，请以国务院通知为准。</p>
                 <p>农历和节日在本地计算。缺少年度安排时，往年额度生成的参考日期不代表正式放假或补班，也不会导出；本地已保存安排及日期修正优先。</p>
                 <p>现有存档未记录每年的获取来源和时间，可导出假期文件核对保存内容。导入保留个人调班；重置仅清理指定年份，其他年份和设置保留。</p>
               </details>
