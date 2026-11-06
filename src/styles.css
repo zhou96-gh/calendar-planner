@@ -371,6 +371,14 @@ fieldset { margin: calc(12 * var(--layout-space)) 0 0; padding: 0; border: 0; }
 .repeat-field input { min-width: 32px; padding: 0 calc(4 * var(--layout-space)); flex: 1 1 56px; }
 .repeat-field span { flex: none; }
 
+.holiday-data-block {
+  display: grid;
+  gap: calc(8 * var(--layout-space));
+}
+
+.holiday-data-block h4 { margin: 0; font-size: 12px; font-weight: 600; }
+.holiday-data-block p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+
 .data-actions .button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -381,6 +389,23 @@ fieldset { margin: calc(12 * var(--layout-space)) 0 0; padding: 0; border: 0; }
 
 .data-actions .button-row + p { margin-top: calc(12 * var(--layout-space)); }
 .data-actions .quiet-button { margin-top: 0; }
+
+.holiday-data-block .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.holiday-year-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8 * var(--layout-space));
+}
+
+.holiday-year-actions label { color: var(--muted); font-size: 11px; }
+.holiday-year-actions input { width: min(100%, calc(120px * var(--layout-scale))); }
+.holiday-data-block .secondary-button { width: auto; }
 
 .secondary-button {
   padding: 0 calc(13 * var(--layout-space));

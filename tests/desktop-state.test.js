@@ -177,3 +177,19 @@ const testUtoolsStorage = () => {
 };
 
 test('uTools 适配器保留原宿主存储键和对象契约', testUtoolsStorage);
+
+const testUtoolsExternalLink = async () => {
+  const opened = [];
+  const host = { utools: { shellOpenExternal: (url) => opened.push(url) } };
+  const platform = createUtoolsPlatform(host, undefined);
+  const url = 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json';
+  await platform.openExternal(url);
+  const expectedOpened = [url];
+  assert.deepEqual(opened, expectedOpened);
+
+  host.utools.shellOpenExternal = async () => { throw new Error('系统浏览器打开失败'); };
+  const open = () => platform.openExternal(url);
+  await assert.rejects(open, /系统浏览器打开失败/);
+};
+
+test('uTools 外链调用公开宿主 API 并传回打开失败', testUtoolsExternalLink);

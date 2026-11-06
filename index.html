@@ -356,18 +356,30 @@
 
             <section id="holiday-data-settings" class="settings-group data-actions" role="tabpanel" aria-labelledby="holiday-data-settings-tab" tabindex="0" hidden>
               <h3>节假日数据</h3>
-              <p id="data-status" class="settings-data-status">已载入 2026 年官方安排</p>
-              <p>节日日期在本地计算。这里可导入、导出法定假期安排，或重置指定年份的数据。</p>
-              <div class="button-row">
-                <button id="import-data" class="secondary-button" type="button">导入假期安排</button>
-                <button id="export-data" class="secondary-button" type="button">导出假期安排</button>
+              <div class="holiday-data-block">
+                <h4>假期文件</h4>
+                <div class="button-row">
+                  <button id="import-data" class="secondary-button" type="button">导入假期安排</button>
+                  <button id="export-data" class="secondary-button" type="button">导出假期安排</button>
+                </div>
               </div>
-              <div class="button-row">
-                <input id="reset-year" type="number" min="1900" max="2200" step="1" aria-label="重置年份" />
-                <button id="reset-data" class="quiet-button" type="button">重置该年数据</button>
+              <div class="holiday-data-block">
+                <h4>重置年度</h4>
+                <div class="holiday-year-actions">
+                  <label for="reset-year">年份</label>
+                  <input id="reset-year" type="number" min="1900" max="2200" step="1" aria-label="重置年份" />
+                  <p id="data-status" class="settings-data-status" role="status">正在检查当前年份的数据</p>
+                  <button id="reset-data" class="secondary-button" type="button">重置该年数据</button>
+                </div>
+                <p>重新获取安排，并清理该年的日期修正和个人调班。获取失败则保留原数据。</p>
               </div>
-              <p>重置会重新获取该年的官方安排，并清理该年的日期修正、个人调休和补班；其他年份和设置保留。获取失败时不清理原数据。</p>
               <input id="import-file" type="file" accept="application/json,.json" hidden />
+              <details class="color-import-guide">
+                <summary>数据来源与使用说明</summary>
+                <p>在线安排来自 <a href="https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json" data-external-link target="_blank" rel="noopener noreferrer">ShuYZ 中国节假日</a>，直接从 ShuYZ 网站获取。尚未收录不代表官方未公布，请以国务院通知为准。</p>
+                <p>农历和节日在本地计算。缺少年度安排时，往年额度生成的参考日期不代表正式放假或补班，也不会导出；本地已保存安排及日期修正优先。</p>
+                <p>现有存档未记录每年的获取来源和时间，可导出假期文件核对保存内容。导入保留个人调班；重置仅清理指定年份，其他年份和设置保留。</p>
+              </details>
               <details class="color-import-guide data-import-guide">
                 <summary>假期安排 JSON 结构</summary>
                 <pre><code>{

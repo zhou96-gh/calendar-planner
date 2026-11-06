@@ -797,12 +797,91 @@ const testResetWithoutFallback = async () => {
   await app.resetYearData();
   const expectedCalls = [2027];
   const sources = app.getQuotaSources();
+  const notification = app.messages.at(-1);
   assert.deepEqual(calls, expectedCalls);
   assert.equal(sources.size, 0);
   assert.equal(memory.writes.length, 0);
+  assert.equal(notification.message, '2027 年数据源暂未提供假期安排，未重置，原数据已保留');
+  assert.equal(notification.isError, undefined);
 };
 
 test('手动重置精确年份失败时不采用往年额度，也不清理个人数据', testResetWithoutFallback);
+
+const testYearDataStatus = () => {
+  const source = readAppSection('function renderYearDataStatus() {', 'function hasHolidayData(year) {');
+  const listeners = new Map();
+  const resetYear = {
+    value: '2027',
+    addEventListener: (type, listener) => listeners.set(type, listener)
+  };
+
+  const elements = { dataStatus: { textContent: '' }, resetYear };
+  const state = { loadedYears: [2027] };
+  const yearFetchStates = new Map();
+  const yearQuotaSources = new Map();
+  let hasData = true;
+  const context = {
+    elements, state, yearFetchStates, yearQuotaSources, viewYear: 2026,
+    hasHolidayData: () => hasData
+  };
+
+  const bindings = readAppSection("elements.resetYear.addEventListener('input'", "elements.resetData.addEventListener('click'");
+  const script = source + bindings + '\nrenderYearDataStatus;';
+  const render = runInNewContext(script, context);
+  render();
+  assert.equal(elements.dataStatus.textContent, '2027（已获取）');
+  assert.match(elements.dataStatus.title, /本地已保存安排/);
+
+  state.loadedYears = [];
+  yearQuotaSources.set(2027, 2026);
+  render();
+  assert.equal(elements.dataStatus.textContent, '2027（未获取）');
+  assert.match(elements.dataStatus.title, /2026 年法定放假额度生成，并非官方调休安排/);
+
+  yearQuotaSources.clear();
+  const failure = { status: 'error', message: '网络不可用' };
+  yearFetchStates.set(2027, failure);
+  render();
+  assert.equal(elements.dataStatus.textContent, '2027（未获取）');
+  assert.match(elements.dataStatus.title, /网络不可用/);
+
+  yearFetchStates.clear();
+  render();
+  assert.equal(elements.dataStatus.textContent, '2027（未获取）');
+  assert.match(elements.dataStatus.title, /本地日期修正/);
+
+  hasData = false;
+  render();
+  assert.match(elements.dataStatus.title, /尚未获取/);
+
+  const loading = { status: 'loading' };
+  yearFetchStates.set(2027, loading);
+  render();
+  assert.equal(elements.dataStatus.textContent, '2027（未获取）');
+  assert.match(elements.dataStatus.title, /正在获取/);
+
+  elements.resetYear.value = '2028';
+  const onInput = listeners.get('input');
+  onInput();
+  assert.equal(elements.dataStatus.textContent, '2028（未获取）');
+
+  state.loadedYears = [2028];
+  hasData = true;
+  render();
+  assert.equal(elements.dataStatus.textContent, '2028（已获取）');
+
+  elements.resetYear.value = '';
+  onInput();
+  assert.equal(elements.dataStatus.textContent, '请输入有效年份');
+  assert.equal(elements.dataStatus.title, '');
+
+  elements.resetYear.value = '2027';
+  const onChange = listeners.get('change');
+  onChange();
+  assert.equal(elements.dataStatus.textContent, '2027（未获取）');
+};
+
+test('年度状态区分本地安排、参考日期、网络异常和本地修正', testYearDataStatus);
 
 const testQuotaReplacedByImport = async () => {
   const memory = createMemoryStorage();

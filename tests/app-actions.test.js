@@ -6,6 +6,58 @@ import { COLOR_DEFAULTS } from '../src/holiday/appearance.js';
 
 const source = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
 
+const testExternalLink = async () => {
+  const opened = [];
+  const messages = [];
+  let listener;
+  let prevented = 0;
+  const platform = {
+    kind: 'utools',
+    openExternal: async (url) => opened.push(url)
+  };
+
+  const context = {
+    URL,
+    calendarPlatform: platform,
+    document: { addEventListener: (_type, callback) => { listener = callback; } },
+    showToast: (message, isError) => messages.push({ message, isError })
+  };
+
+  const start = source.indexOf("document.addEventListener('click', async (event) => {");
+  const end = source.indexOf("\ndocument.addEventListener('click', (event) => {", start);
+  assert.ok(start >= 0 && end > start);
+  const script = source.slice(start, end);
+  runInNewContext(script, context);
+  const link = { href: 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayAPI.json' };
+  const event = {
+    target: { closest: () => link },
+    preventDefault: () => { prevented += 1; }
+  };
+
+  await listener(event);
+  const expectedOpened = [link.href];
+  assert.deepEqual(opened, expectedOpened);
+  assert.equal(prevented, 1);
+
+  platform.kind = 'browser';
+  await listener(event);
+  assert.equal(prevented, 1);
+  assert.equal(opened.length, 1);
+
+  platform.kind = 'desktop';
+  platform.openExternal = async () => { throw new Error('原生调用失败'); };
+  await listener(event);
+  assert.equal(messages[0].message, '链接打开失败：原生调用失败');
+  assert.equal(messages[0].isError, true);
+
+  link.href = 'javascript:alert(1)';
+  await listener(event);
+  assert.equal(messages[1].message, '链接打开失败：仅支持网页链接');
+  assert.equal(opened.length, 1);
+};
+
+test('说明外链交给宿主，普通浏览器保留默认行为，危险协议与打开失败给出提示', testExternalLink);
+
 test('侧栏高度跟随日历，隐藏期间保留测量值，不监听窗口拉伸切换定位', () => {
   let callback;
   const observed = [];

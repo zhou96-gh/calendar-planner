@@ -42,6 +42,10 @@ export async function createDesktopPlatform() {
     window: windowHandle,
     invoke,
     emitTo,
+    openExternal: (url) => {
+      const argumentsValue = { url };
+      return invoke('open_external_url', argumentsValue);
+    },
     listen: (event, handler) => windowHandle.listen(event, handler),
     readColorSchemes: () => entries,
     exportBackup: (calendar) => {

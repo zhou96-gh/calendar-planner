@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { formatLunarDate, getFestivalNames } from '../src/holiday/festivals.js';
+import { HolidayDataUnavailableError } from '../src/holiday/fetch.js';
 import {
   buildMonthGrid,
   classifyDay,
@@ -197,7 +198,7 @@ const testAnnualImport = () => {
   const readEmpty = () => decodeHolidayImport(empty);
   const readWrongYear = () => decodeHolidayImport(wrongYear);
   assert.equal(imported.holidays['2027-01-01'].kind, 'block');
-  assert.throws(readEmpty, /暂无/);
+  assert.throws(readEmpty, HolidayDataUnavailableError);
   assert.throws(readWrongYear, /年份无效/);
 };
 

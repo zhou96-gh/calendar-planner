@@ -7,6 +7,7 @@ export function createUtoolsPlatform(host, browserStorage) {
   return {
     kind: storage ? 'utools' : 'browser',
     onEnter: (listener) => host.utools?.onPluginEnter?.(listener),
+    openExternal: (url) => host.utools.shellOpenExternal(url),
     storage: {
       getItem: (key) => {
         if (storage) return storage.getItem(key);

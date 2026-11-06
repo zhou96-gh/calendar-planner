@@ -425,7 +425,10 @@ function setView(view) {
   elements.settingsView.hidden = !isSettings;
   elements.settingsFloatingBack.hidden = !isSettings;
 
-  if (isSettings) elements.resetYear.value = String(viewYear);
+  if (isSettings) {
+    elements.resetYear.value = String(viewYear);
+    renderYearDataStatus();
+  }
 }
 
 /**
@@ -807,20 +810,32 @@ function renderYearResult() {
  * 获取状态独立更新，同年导航无需重建年度假期列表。
  */
 function renderYearDataStatus() {
-  const fetchState = yearFetchStates.get(viewYear);
-  const hasYearData = state.loadedYears.includes(viewYear) && hasHolidayData(viewYear);
-  const quotaSourceYear = yearQuotaSources.get(viewYear);
+  const year = Number(elements.resetYear.value);
+
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+    elements.dataStatus.textContent = '请输入有效年份';
+    elements.dataStatus.title = '';
+    return;
+  }
+
+  const fetchState = yearFetchStates.get(year);
+  const hasYearData = state.loadedYears.includes(year) && hasHolidayData(year);
+  const quotaSourceYear = yearQuotaSources.get(year);
+  const acquisitionStatus = hasYearData ? '已获取' : '未获取';
+  elements.dataStatus.textContent = `${year}（${acquisitionStatus}）`;
 
   if (hasYearData) {
-    elements.dataStatus.textContent = `已载入 ${viewYear} 年法定假期安排`;
+    elements.dataStatus.title = `正在使用 ${year} 年本地已保存安排（含导入及日期修正）`;
   } else if (quotaSourceYear) {
-    elements.dataStatus.textContent = `${viewYear} 年安排待补充，参考 ${quotaSourceYear} 年法定放假额度`;
+    elements.dataStatus.title = `${year} 年正在使用参考日期：按 ${quotaSourceYear} 年法定放假额度生成，并非官方调休安排`;
   } else if (fetchState?.status === 'loading') {
-    elements.dataStatus.textContent = `正在获取 ${viewYear} 年法定假期安排`;
+    elements.dataStatus.title = `正在获取 ${year} 年法定假期安排`;
   } else if (fetchState?.status === 'error') {
-    elements.dataStatus.textContent = `${viewYear} 年法定假期安排待补充，节日已显示`;
+    elements.dataStatus.title = `${year} 年安排获取未完成：${fetchState.message}；节日由本地历法显示`;
+  } else if (hasHolidayData(year)) {
+    elements.dataStatus.title = `${year} 年正在使用本地日期修正，完整年度安排待获取`;
   } else {
-    elements.dataStatus.textContent = `正在检查 ${viewYear} 年法定假期安排`;
+    elements.dataStatus.title = `${year} 年尚未获取法定假期安排`;
   }
 }
 
@@ -866,6 +881,8 @@ function refreshHolidayYear(year) {
 
   if (activeDateKey.startsWith(prefix) || visibleDates.some((dateKey) => dateKey.startsWith(prefix))) {
     render('navigation');
+  } else {
+    renderYearDataStatus();
   }
 }
 
@@ -873,9 +890,7 @@ function refreshHolidayYear(year) {
  * 自动加载按实际年份保存；目标年份无安排时向前查找，逐年共用并发保护。
  */
 async function loadHolidayData(year, requestState) {
-  if (viewYear === year) {
-    elements.dataStatus.textContent = `正在获取 ${year} 年法定假期安排`;
-  }
+  if (Number(elements.resetYear.value) === year) renderYearDataStatus();
 
   try {
     const fetchedHolidays = await fetchHolidayYear(year);
@@ -1923,6 +1938,7 @@ async function resetYearData() {
   const requestState = { status: 'loading' };
   yearFetchStates.set(year, requestState);
   elements.resetData.disabled = true;
+  renderYearDataStatus();
 
   try {
     const holidays = await fetchHolidayYear(year);
@@ -1956,6 +1972,13 @@ async function resetYearData() {
     }
 
     renderYearResult();
+
+    if (error instanceof HolidayDataUnavailableError) {
+      const unavailableMessage = `${error.message}，未重置，原数据已保留`;
+      showToast(unavailableMessage);
+      return;
+    }
+
     const failureMessage = `重置失败，原数据已保留：${error.message}`;
     showToast(failureMessage, true);
   } finally {
@@ -2448,7 +2471,28 @@ elements.importFile.addEventListener('change', () => {
 });
 document.querySelector('#export-data').addEventListener('click', exportData);
 elements.resetYear.value = String(viewYear);
+elements.resetYear.addEventListener('input', renderYearDataStatus);
+elements.resetYear.addEventListener('change', renderYearDataStatus);
 elements.resetData.addEventListener('click', resetYearData);
+
+document.addEventListener('click', async (event) => {
+  const link = event.target.closest('a[data-external-link]');
+
+  if (!link || globalThis.calendarPlatform.kind === 'browser') return;
+
+  event.preventDefault();
+
+  try {
+    const url = new URL(link.href);
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('仅支持网页链接');
+
+    await globalThis.calendarPlatform.openExternal(url.href);
+  } catch (error) {
+    const message = `链接打开失败：${error.message || error}`;
+    showToast(message, true);
+  }
+});
 
 document.addEventListener('click', (event) => {
   const input = event.target.closest('input[type="date"]');

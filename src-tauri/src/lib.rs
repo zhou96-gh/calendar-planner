@@ -16,6 +16,7 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 mod attachment;
+mod external;
 mod recommendation;
 
 const DATABASE_FILE: &str = "calendar-planner.db";
@@ -1155,6 +1156,7 @@ pub fn run() {
             set_locked,
             save_window_size,
             set_auto_launch,
+            external::open_external_url,
             attachment::set_attachment_visible,
             attachment::hide_attachment,
             attachment::begin_attachment_drag,
